@@ -1,6 +1,13 @@
 use std::{collections::HashSet, ops::RangeInclusive};
 
 #[derive(Debug, PartialEq)]
+pub enum RangeType {
+    Exact(usize),
+    Between(usize, usize),
+    AtLeast(usize),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Node {
     Empty,
     Alternation(Box<Node>, Box<Node>),
@@ -8,9 +15,9 @@ pub enum Node {
     Star(Box<Node>),
     Plus(Box<Node>),
     Optional(Box<Node>),
-    RangeQuantifier(Box<Node>, RangeInclusive<usize>),
+    Range { inner: Box<Node>, range: RangeType },
     Group(Box<Node>),
     Wildcard,
-    Char(char),
-    // CharClass,
+    Character(char),
+    // CharacterClass,
 }
