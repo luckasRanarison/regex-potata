@@ -27,15 +27,6 @@ impl Transition {
     }
 }
 
-impl Transition {
-    fn accept(&self, ch: char) -> bool {
-        match self.kind {
-            TransitionKind::Char(c) => c == ch,
-            TransitionKind::Epsilon => true,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub struct Nfa {
     state_count: usize,
@@ -73,7 +64,21 @@ impl Nfa {
         self
     }
 
-    fn empty() -> Self {
+    fn extend_transition(
+        mut self,
+        transitions: BTreeMap<usize, Vec<Transition>>,
+        offset: usize,
+    ) -> Self {
+        for (start, transitions) in transitions {
+            for transition in transitions {
+                self.add_transition(start + offset, transition.kind, transition.end + offset);
+            }
+        }
+
+        self
+    }
+
+    fn epsilon() -> Self {
         Nfa::new(2).with_transition(START, TransitionKind::Epsilon, 1)
     }
 
@@ -84,43 +89,32 @@ impl Nfa {
     fn concatenate(mut self, other: Nfa) -> Self {
         let offset = self.state_count;
 
-        for (start, transitions) in other.transitions {
-            for transition in transitions {
-                self.add_transition(start + offset, transition.kind, transition.end + offset)
-            }
-        }
-
-        self.with_transition(offset - 1, TransitionKind::Epsilon, offset)
+        self.extend_transition(other.transitions, offset)
+            .with_transition(offset - 1, TransitionKind::Epsilon, offset)
     }
 
     fn alternate(self, other: Nfa) -> Self {
         let offset = self.state_count + 1;
         let new_end = offset + other.state_count;
 
-        let mut result = Nfa::new(1)
+        Nfa::new(1)
             .with_transition(START, TransitionKind::Epsilon, 1)
-            .with_transition(START, TransitionKind::Epsilon, offset);
-
-        for (start, transitions) in self.transitions {
-            for transition in transitions {
-                result.add_transition(start + 1, transition.kind, transition.end + 1);
-            }
-        }
-
-        for (start, transitions) in other.transitions {
-            for transition in transitions {
-                result.add_transition(start + offset, transition.kind, transition.end + offset)
-            }
-        }
-
-        result
+            .with_transition(START, TransitionKind::Epsilon, offset)
+            .extend_transition(self.transitions, 1)
+            .extend_transition(other.transitions, offset)
             .with_transition(offset - 1, TransitionKind::Epsilon, new_end)
             .with_transition(new_end - 1, TransitionKind::Epsilon, new_end)
     }
 
     fn one_or_more(self) -> Self {
-        let end = self.end();
-        self.with_transition(end, TransitionKind::Epsilon, START)
+        // let offset = self.state_count;
+        //
+        // Nfa::new(1)
+        //     .with_transition(START, TransitionKind::Epsilon, 1)
+        //     .extend_transition(self.transitions, 1)
+        //     .with_transition(offset, TransitionKind::Epsilon, 1)
+        //     .with_transition(offset, TransitionKind::Epsilon, offset + 1)
+        todo!()
     }
 
     fn zero_or_one(self) -> Self {
@@ -148,6 +142,7 @@ impl Nfa {
             }
         }
 
+        eclosure.insert(start);
         eclosure
     }
 
@@ -157,6 +152,7 @@ impl Nfa {
                 .iter()
                 .filter_map(|t| match t.kind {
                     TransitionKind::Char(ch) if ch == input => Some(t.end),
+                    TransitionKind::Epsilon => Some(t.end),
                     _ => None,
                 })
                 .collect()
@@ -173,17 +169,19 @@ impl Nfa {
         for ch in input.chars() {
             states = states
                 .iter()
-                .flat_map(|&state| {
-                    let eclosure = self.epsilon_closure(state);
-                    let next = self.next_states(state, ch);
-                    next.into_iter().chain(eclosure)
-                })
+                .flat_map(|&s| self.epsilon_closure(s))
+                .flat_map(|state| self.next_states(state, ch))
                 .collect();
 
             if states.is_empty() {
                 return false;
             }
         }
+
+        states = states
+            .iter()
+            .flat_map(|&s| self.epsilon_closure(s))
+            .collect();
 
         states.contains(&self.end())
     }
@@ -192,7 +190,7 @@ impl Nfa {
 impl From<Node> for Nfa {
     fn from(value: Node) -> Self {
         match value {
-            Node::Empty => Nfa::empty(),
+            Node::Empty => Nfa::epsilon(),
             Node::Character(ch) => Nfa::character(ch),
             Node::Concatenation(a, b) => {
                 let a = Nfa::from(*a);
@@ -216,9 +214,9 @@ impl From<Node> for Nfa {
                 let n = Nfa::from(*node);
                 Nfa::zero_or_one(n)
             }
+            Node::Wildcard => Nfa::epsilon(),
+            Node::Group(node) => Nfa::from(*node),
             Node::Range { inner, range } => todo!(),
-            Node::Group(_) => todo!(),
-            Node::Wildcard => todo!(),
         }
     }
 }
@@ -273,11 +271,16 @@ mod tests {
     }
 
     #[test]
-    fn test_match() {
-        let pattern = "hello";
+    fn test_simple_match() {
+        let pattern = "(mega|kilo)?bytes?";
         let ast = Parser::new(pattern).parse().unwrap();
         let nfa = Nfa::from(ast);
 
-        assert!(nfa.test("hello"), "{:?}", nfa);
+        assert!(nfa.test("byte"));
+        assert!(nfa.test("bytes"));
+        assert!(nfa.test("kilobyte"));
+        assert!(nfa.test("kilobytes"));
+        assert!(nfa.test("megabyte"));
+        assert!(nfa.test("megabytes"));
     }
 }
