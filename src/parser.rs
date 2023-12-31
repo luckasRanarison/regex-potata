@@ -1,7 +1,9 @@
-use crate::{ast::Node, error::ParsingError};
+use crate::{
+    ast::{Node, Range},
+    error::ParsingError,
+};
 use std::{
     iter::{self, Peekable},
-    ops::RangeInclusive,
     str::Chars,
 };
 
@@ -56,9 +58,11 @@ impl<'a> Parser<'a> {
             Some('?') => Ok(self.next_and(Node::Optional(Box::new(lhs)))),
             Some('{') => {
                 let _ = self.next();
-                let range = self.parse_range()?;
 
-                Ok(Node::RangeQuantifier(Box::new(lhs), range))
+                Ok(Node::Range {
+                    inner: Box::new(lhs),
+                    range: self.parse_range()?,
+                })
             }
             _ => Ok(lhs),
         }
@@ -70,7 +74,7 @@ impl<'a> Parser<'a> {
             Some('[') => self.parse_class(),
             Some('\\') => self.parse_escape(),
             Some('.') => Ok(Node::Wildcard),
-            Some(ch) => Ok(Node::Char(ch)),
+            Some(ch) => Ok(Node::Character(ch)),
             None => Ok(Node::Empty),
         }
     }
@@ -86,7 +90,7 @@ impl<'a> Parser<'a> {
         todo!()
     }
 
-    fn parse_range(&mut self) -> Result<RangeInclusive<usize>> {
+    fn parse_range(&mut self) -> Result<Range> {
         if let Some(ch) = self.peek() {
             match ch {
                 ch if ch.is_numeric() => self.parse_range_inner(),
@@ -97,31 +101,30 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_range_inner(&mut self) -> Result<RangeInclusive<usize>> {
+    fn parse_range_inner(&mut self) -> Result<Range> {
         let lower = self.take_number()?;
-        let upper = match self.next() {
-            Some('}') => Ok(lower),
+
+        match self.next() {
+            Some('}') => Ok(self.next_and(Range::new(lower, Some(lower)))),
             Some(',') => match self.peek() {
                 Some(ch) if ch.is_numeric() => {
                     let upper = self.take_number()?;
                     let _ = self.next_expect('}')?;
 
-                    Ok(upper)
+                    Ok(Range::new(lower, Some(upper)))
                 }
-                Some('}') => Ok(self.next_and(usize::MAX)),
+                Some('}') => Ok(self.next_and(Range::new(lower, None))),
                 Some(_) => Err(ParsingError::InvalidQuantifier),
                 None => Err(ParsingError::UnexpectedEndOfInput),
             },
             Some(_) => Err(ParsingError::InvalidQuantifier),
             None => Err(ParsingError::UnexpectedEndOfInput),
-        };
-
-        Ok(lower..=upper?)
+        }
     }
 
     fn parse_escape(&mut self) -> Result<Node> {
         match self.next() {
-            Some(ch) if needs_escape(ch) => Ok(Node::Char(ch)),
+            Some(ch) if needs_escape(ch) => Ok(Node::Character(ch)),
             Some(_) => Err(ParsingError::InvalidEscapeSequence),
             None => Err(ParsingError::UnexpectedEndOfInput),
         }
@@ -170,10 +173,10 @@ mod tests {
     fn test_chars() {
         let ast = Parser::new("ok!").parse().unwrap();
         let expected = Node::Concatenation(
-            Box::new(Node::Char('o')),
+            Box::new(Node::Character('o')),
             Box::new(Node::Concatenation(
-                Box::new(Node::Char('k')),
-                Box::new(Node::Char('!')),
+                Box::new(Node::Character('k')),
+                Box::new(Node::Character('!')),
             )),
         );
 
@@ -184,10 +187,10 @@ mod tests {
     fn test_unary() {
         let ast = Parser::new("les?").parse().unwrap();
         let expected = Node::Concatenation(
-            Box::new(Node::Char('l')),
+            Box::new(Node::Character('l')),
             Box::new(Node::Concatenation(
-                Box::new(Node::Char('e')),
-                Box::new(Node::Optional(Box::new(Node::Char('s')))),
+                Box::new(Node::Character('e')),
+                Box::new(Node::Optional(Box::new(Node::Character('s')))),
             )),
         );
 
@@ -195,16 +198,16 @@ mod tests {
     }
 
     #[test]
-    fn test_choice() {
+    fn test_alternation() {
         let ast = Parser::new("la|le").parse().unwrap();
         let expected = Node::Alternation(
             Box::new(Node::Concatenation(
-                Box::new(Node::Char('l')),
-                Box::new(Node::Char('a')),
+                Box::new(Node::Character('l')),
+                Box::new(Node::Character('a')),
             )),
             Box::new(Node::Concatenation(
-                Box::new(Node::Char('l')),
-                Box::new(Node::Char('e')),
+                Box::new(Node::Character('l')),
+                Box::new(Node::Character('e')),
             )),
         );
 
@@ -212,13 +215,13 @@ mod tests {
     }
 
     #[test]
-    fn test_group_choice() {
+    fn test_group_alternation() {
         let ast = Parser::new("l(a|e)").parse().unwrap();
         let expected = Node::Concatenation(
-            Box::new(Node::Char('l')),
+            Box::new(Node::Character('l')),
             Box::new(Node::Group(Box::new(Node::Alternation(
-                Box::new(Node::Char('a')),
-                Box::new(Node::Char('e')),
+                Box::new(Node::Character('a')),
+                Box::new(Node::Character('e')),
             )))),
         );
 
@@ -228,17 +231,26 @@ mod tests {
     #[test]
     fn test_quantifier() {
         let ast = Parser::new("1{2,5}").parse().unwrap();
-        let expected = Node::RangeQuantifier(Box::new(Node::Char('1')), 2..=5);
+        let expected = Node::Range {
+            inner: Box::new(Node::Character('1')),
+            range: Range::new(2, Some(5)),
+        };
 
         assert_eq!(ast, expected);
 
         let ast = Parser::new("1{5}").parse().unwrap();
-        let expected = Node::RangeQuantifier(Box::new(Node::Char('1')), 5..=5);
+        let expected = Node::Range {
+            inner: Box::new(Node::Character('1')),
+            range: Range::new(5, Some(5)),
+        };
 
         assert_eq!(ast, expected);
 
         let ast = Parser::new("1{5,}").parse().unwrap();
-        let expected = Node::RangeQuantifier(Box::new(Node::Char('1')), 5..=usize::MAX);
+        let expected = Node::Range {
+            inner: Box::new(Node::Character('1')),
+            range: Range::new(5, None),
+        };
 
         assert_eq!(ast, expected);
     }

@@ -1,4 +1,14 @@
-use std::{collections::HashSet, ops::RangeInclusive};
+#[derive(Debug, PartialEq)]
+pub struct Range {
+    pub min: usize,
+    pub max: Option<usize>,
+}
+
+impl Range {
+    pub fn new(min: usize, max: Option<usize>) -> Self {
+        Self { min, max }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Node {
@@ -8,9 +18,9 @@ pub enum Node {
     Star(Box<Node>),
     Plus(Box<Node>),
     Optional(Box<Node>),
-    RangeQuantifier(Box<Node>, RangeInclusive<usize>),
+    Range { inner: Box<Node>, range: Range },
     Group(Box<Node>),
     Wildcard,
-    Char(char),
-    // CharClass,
+    Character(char),
+    // CharacterClass,
 }

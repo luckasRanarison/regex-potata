@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("{0}")]
-    ParsingError(ParsingError),
+    ParsingError(#[from] ParsingError),
 }
 
 #[derive(Debug, Error)]
