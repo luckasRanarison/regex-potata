@@ -1,4 +1,4 @@
-use crate::ast::Node;
+use crate::ast::{Node, Range};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     fmt::{self, Debug},
@@ -7,8 +7,9 @@ use std::{
 pub const START: usize = 0;
 
 type StateId = usize;
+type TransitionMap = BTreeMap<usize, Vec<Transition>>;
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 enum TransitionKind {
     Char(char),
     Epsilon,
@@ -25,7 +26,7 @@ impl fmt::Display for TransitionKind {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 struct Transition {
     kind: TransitionKind,
     end: StateId,
@@ -41,10 +42,10 @@ impl Transition {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Nfa {
     state_count: usize,
-    transitions: BTreeMap<usize, Vec<Transition>>,
+    transitions: TransitionMap,
 }
 
 impl Nfa {
@@ -92,6 +93,7 @@ impl Nfa {
             .transition(new_end - 1, TransitionKind::Epsilon, new_end)
             .build()
     }
+
     fn one_or_more(self) -> Self {
         let offset = self.state_count;
 
@@ -113,6 +115,30 @@ impl Nfa {
 
     fn zero_or_more(self) -> Self {
         Nfa::zero_or_one(self).one_or_more()
+    }
+
+    fn range(self, range: Range) -> Self {
+        let mut nfa = self;
+        let clone = nfa.clone();
+
+        for _ in 1..range.min {
+            nfa = nfa.concatenate(clone.clone())
+        }
+
+        if let Some(max) = range.max {
+            for _ in range.min..max {
+                nfa = nfa.concatenate(clone.clone().zero_or_one())
+            }
+
+            nfa
+        } else {
+            let end = nfa.end();
+
+            NfaBuilder::from(nfa)
+                .transition(end, TransitionKind::Epsilon, end - clone.state_count)
+                .transition(end, TransitionKind::Epsilon, end + 1)
+                .build()
+        }
     }
 
     pub fn epsilon_closure(&self, start: StateId) -> HashSet<StateId> {
@@ -163,17 +189,9 @@ impl From<Node> for Nfa {
             Node::Plus(node) => Nfa::from(*node).one_or_more(),
             Node::Star(node) => Nfa::from(*node).zero_or_more(),
             Node::Optional(node) => Nfa::from(*node).zero_or_one(),
-            Node::Concatenation(a, b) => {
-                let a = Nfa::from(*a);
-                let b = Nfa::from(*b);
-                Nfa::concatenate(a, b)
-            }
-            Node::Alternation(a, b) => {
-                let a = Nfa::from(*a);
-                let b = Nfa::from(*b);
-                Nfa::alternate(a, b)
-            }
-            Node::Range { inner, range } => todo!(),
+            Node::Concatenation(a, b) => Nfa::from(*a).concatenate(Nfa::from(*b)),
+            Node::Alternation(a, b) => Nfa::from(*a).alternate(Nfa::from(*b)),
+            Node::Range { inner, range } => Nfa::from(*inner).range(range),
         }
     }
 }
@@ -192,10 +210,10 @@ impl Debug for Nfa {
     }
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Clone, Default)]
 pub struct NfaBuilder {
     state_count: usize,
-    transitions: BTreeMap<usize, Vec<Transition>>,
+    transitions: TransitionMap,
 }
 
 impl NfaBuilder {
@@ -293,5 +311,68 @@ mod tests {
         };
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_range_excat() {
+        let nfa = to_nfa("e{3}");
+        let transitions = vec![
+            (0, vec![Transition::new(TransitionKind::Char('e'), 1)]),
+            (1, vec![Transition::new(TransitionKind::Epsilon, 2)]),
+            (2, vec![Transition::new(TransitionKind::Char('e'), 3)]),
+            (3, vec![Transition::new(TransitionKind::Epsilon, 4)]),
+            (4, vec![Transition::new(TransitionKind::Char('e'), 5)]),
+        ];
+        let expected = Nfa {
+            state_count: 6,
+            transitions: transitions.into_iter().collect(),
+        };
+
+        assert_eq!(nfa, expected);
+    }
+
+    #[test]
+    fn test_range_between() {
+        let nfa = to_nfa("e{1,2}");
+        let transitions = vec![
+            (0, vec![Transition::new(TransitionKind::Char('e'), 1)]),
+            (1, vec![Transition::new(TransitionKind::Epsilon, 2)]),
+            (
+                2,
+                vec![
+                    Transition::new(TransitionKind::Char('e'), 3),
+                    Transition::new(TransitionKind::Epsilon, 3),
+                ],
+            ),
+        ];
+        let expected = Nfa {
+            state_count: 4,
+            transitions: transitions.into_iter().collect(),
+        };
+
+        assert_eq!(nfa, expected);
+    }
+
+    #[test]
+    fn test_range_minimum() {
+        let nfa = to_nfa("e{2,}");
+        let transitions = vec![
+            (0, vec![Transition::new(TransitionKind::Char('e'), 1)]),
+            (1, vec![Transition::new(TransitionKind::Epsilon, 2)]),
+            (2, vec![Transition::new(TransitionKind::Char('e'), 3)]),
+            (
+                3,
+                vec![
+                    Transition::new(TransitionKind::Epsilon, 1),
+                    Transition::new(TransitionKind::Epsilon, 4),
+                ],
+            ),
+        ];
+        let expected = Nfa {
+            state_count: 5,
+            transitions: transitions.into_iter().collect(),
+        };
+
+        assert_eq!(nfa, expected);
     }
 }

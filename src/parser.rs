@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Node, RangeType},
+    ast::{Node, Range},
     error::ParsingError,
 };
 use std::{
@@ -90,7 +90,7 @@ impl<'a> Parser<'a> {
         todo!()
     }
 
-    fn parse_range(&mut self) -> Result<RangeType> {
+    fn parse_range(&mut self) -> Result<Range> {
         if let Some(ch) = self.peek() {
             match ch {
                 ch if ch.is_numeric() => self.parse_range_inner(),
@@ -101,19 +101,19 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_range_inner(&mut self) -> Result<RangeType> {
+    fn parse_range_inner(&mut self) -> Result<Range> {
         let lower = self.take_number()?;
 
         match self.next() {
-            Some('}') => Ok(self.next_and(RangeType::Exact(lower))),
+            Some('}') => Ok(self.next_and(Range::new(lower, Some(lower)))),
             Some(',') => match self.peek() {
                 Some(ch) if ch.is_numeric() => {
                     let upper = self.take_number()?;
                     let _ = self.next_expect('}')?;
 
-                    Ok(RangeType::Between(lower, upper))
+                    Ok(Range::new(lower, Some(upper)))
                 }
-                Some('}') => Ok(self.next_and(RangeType::AtLeast(lower))),
+                Some('}') => Ok(self.next_and(Range::new(lower, None))),
                 Some(_) => Err(ParsingError::InvalidQuantifier),
                 None => Err(ParsingError::UnexpectedEndOfInput),
             },
@@ -233,7 +233,7 @@ mod tests {
         let ast = Parser::new("1{2,5}").parse().unwrap();
         let expected = Node::Range {
             inner: Box::new(Node::Character('1')),
-            range: RangeType::Between(2, 5),
+            range: Range::new(2, Some(5)),
         };
 
         assert_eq!(ast, expected);
@@ -241,7 +241,7 @@ mod tests {
         let ast = Parser::new("1{5}").parse().unwrap();
         let expected = Node::Range {
             inner: Box::new(Node::Character('1')),
-            range: RangeType::Exact(5),
+            range: Range::new(5, Some(5)),
         };
 
         assert_eq!(ast, expected);
@@ -249,7 +249,7 @@ mod tests {
         let ast = Parser::new("1{5,}").parse().unwrap();
         let expected = Node::Range {
             inner: Box::new(Node::Character('1')),
-            range: RangeType::AtLeast(5),
+            range: Range::new(5, None),
         };
 
         assert_eq!(ast, expected);

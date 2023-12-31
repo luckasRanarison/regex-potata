@@ -59,22 +59,60 @@ mod test {
     }
 
     #[test]
-    fn test_plus_quantifiers() {
-        let nfa = Regex::new("eh+").unwrap();
+    fn test_plus_quantifier() {
+        let re = Regex::new("eh+").unwrap();
 
-        assert!(nfa.test("eh"));
-        assert!(nfa.test("ehh"));
-        assert!(nfa.test("ehhh"));
-        assert!(!nfa.test("ehs"));
-        assert!(!nfa.test("ehss"));
+        assert!(re.test("eh"));
+        assert!(re.test("ehh"));
+        assert!(re.test("ehhh"));
+        assert!(!re.test("ehs"));
+        assert!(!re.test("ehss"));
     }
 
     #[test]
-    fn test_star_quantifiers() {
-        let nfa = Regex::new("n.*").unwrap();
+    fn test_star_quantifier() {
+        let re = Regex::new("n.*").unwrap();
 
-        assert!(nfa.test("no"));
-        assert!(nfa.test("nooo"));
-        assert!(nfa.test("nooope"));
+        assert!(re.test("no"));
+        assert!(re.test("nooo"));
+        assert!(re.test("nooope"));
+    }
+
+    #[test]
+    fn test_range_quantifier_simple() {
+        let re = Regex::new("e{3}").unwrap();
+
+        assert!(re.test("eee"));
+        assert!(!re.test("ee"));
+        assert!(!re.test("eeee"));
+
+        let re = Regex::new("e{1,3}").unwrap();
+
+        assert!(re.test("e"));
+        assert!(re.test("ee"));
+        assert!(re.test("eee"));
+        assert!(!re.test(""));
+        assert!(!re.test("eeee"));
+
+        let re = Regex::new("e{3,}").unwrap();
+
+        assert!(re.test("eee"));
+        assert!(re.test("eeee"));
+        assert!(re.test("eeeee"));
+        assert!(!re.test(""));
+        assert!(!re.test("e"));
+        assert!(!re.test("ee"));
+    }
+
+    #[test]
+    fn test_range_quantifier_extended() {
+        let re = Regex::new("(h(ey|i)!?){2,}").unwrap();
+
+        assert!(re.test("hihi"));
+        assert!(re.test("hihi!hi"));
+        assert!(re.test("heyhey!"));
+        assert!(re.test("hey!hi"));
+        assert!(!re.test(""));
+        assert!(!re.test("hey!"));
     }
 }
