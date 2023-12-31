@@ -38,7 +38,7 @@ impl Regex {
         states
             .iter()
             .flat_map(|&s| self.nfa.epsilon_closure(s))
-            .any(|s| s == self.nfa.end())
+            .any(|s| self.nfa.is_accepting(s))
     }
 }
 

@@ -49,7 +49,7 @@ pub struct Nfa {
 }
 
 impl Nfa {
-    pub fn end(&self) -> usize {
+    fn end(&self) -> usize {
         self.state_count - 1
     }
 
@@ -149,9 +149,12 @@ impl Nfa {
 
         while let Some(state) = stack.pop_back() {
             if let Some(transitions) = self.transitions.get(&state) {
-                let eclosed = transitions.iter().filter_map(|t| match t.is_epsilon() {
-                    true if !eclosure.contains(&t.end) => Some(t.end),
-                    _ => None,
+                let eclosed = transitions.iter().filter_map(|t| {
+                    if t.is_epsilon() && !eclosure.contains(&t.end) {
+                        Some(t.end)
+                    } else {
+                        None
+                    }
                 });
 
                 stack.extend(eclosed);
@@ -176,6 +179,10 @@ impl Nfa {
         } else {
             HashSet::new()
         }
+    }
+
+    pub fn is_accepting(&self, state: StateId) -> bool {
+        self.end() == state
     }
 }
 
@@ -275,104 +282,100 @@ mod tests {
 
     #[test]
     fn test_concatenation() {
-        let result = to_nfa("hi");
-        let transitions = vec![
-            (0, vec![Transition::new(TransitionKind::Char('h'), 1)]),
-            (1, vec![Transition::new(TransitionKind::Epsilon, 2)]),
-            (2, vec![Transition::new(TransitionKind::Char('i'), 3)]),
-        ];
-        let expected = Nfa {
-            state_count: 4,
-            transitions: transitions.into_iter().collect(),
-        };
+        let nfa = NfaBuilder::default()
+            .transition(0, TransitionKind::Char('h'), 1)
+            .transition(1, TransitionKind::Epsilon, 2)
+            .transition(2, TransitionKind::Char('i'), 3)
+            .build();
+        let expected = to_nfa("hi");
 
-        assert_eq!(result, expected);
+        assert_eq!(nfa, expected);
     }
 
     #[test]
     fn test_alternation() {
-        let result = to_nfa("a|b");
-        let transitions = vec![
-            (
-                0,
-                vec![
-                    Transition::new(TransitionKind::Epsilon, 1),
-                    Transition::new(TransitionKind::Epsilon, 3),
-                ],
-            ),
-            (1, vec![Transition::new(TransitionKind::Char('a'), 2)]),
-            (2, vec![Transition::new(TransitionKind::Epsilon, 5)]),
-            (3, vec![Transition::new(TransitionKind::Char('b'), 4)]),
-            (4, vec![Transition::new(TransitionKind::Epsilon, 5)]),
-        ];
-        let expected = Nfa {
-            state_count: 6,
-            transitions: transitions.into_iter().collect(),
-        };
+        let nfa = NfaBuilder::default()
+            .transition(0, TransitionKind::Epsilon, 1)
+            .transition(0, TransitionKind::Epsilon, 3)
+            .transition(1, TransitionKind::Char('a'), 2)
+            .transition(2, TransitionKind::Epsilon, 5)
+            .transition(3, TransitionKind::Char('b'), 4)
+            .transition(4, TransitionKind::Epsilon, 5)
+            .build();
+        let expected = to_nfa("a|b");
 
-        assert_eq!(result, expected);
+        assert_eq!(nfa, expected);
     }
 
     #[test]
     fn test_range_excat() {
-        let nfa = to_nfa("e{3}");
-        let transitions = vec![
-            (0, vec![Transition::new(TransitionKind::Char('e'), 1)]),
-            (1, vec![Transition::new(TransitionKind::Epsilon, 2)]),
-            (2, vec![Transition::new(TransitionKind::Char('e'), 3)]),
-            (3, vec![Transition::new(TransitionKind::Epsilon, 4)]),
-            (4, vec![Transition::new(TransitionKind::Char('e'), 5)]),
-        ];
-        let expected = Nfa {
-            state_count: 6,
-            transitions: transitions.into_iter().collect(),
-        };
+        let nfa = NfaBuilder::default()
+            .transition(0, TransitionKind::Char('e'), 1)
+            .transition(1, TransitionKind::Epsilon, 2)
+            .transition(2, TransitionKind::Char('e'), 3)
+            .transition(3, TransitionKind::Epsilon, 4)
+            .transition(4, TransitionKind::Char('e'), 5)
+            .build();
+        let expected = to_nfa("e{3}");
 
         assert_eq!(nfa, expected);
     }
 
     #[test]
     fn test_range_between() {
-        let nfa = to_nfa("e{1,2}");
-        let transitions = vec![
-            (0, vec![Transition::new(TransitionKind::Char('e'), 1)]),
-            (1, vec![Transition::new(TransitionKind::Epsilon, 2)]),
-            (
-                2,
-                vec![
-                    Transition::new(TransitionKind::Char('e'), 3),
-                    Transition::new(TransitionKind::Epsilon, 3),
-                ],
-            ),
-        ];
-        let expected = Nfa {
-            state_count: 4,
-            transitions: transitions.into_iter().collect(),
-        };
+        let nfa = NfaBuilder::default()
+            .transition(0, TransitionKind::Char('e'), 1)
+            .transition(1, TransitionKind::Epsilon, 2)
+            .transition(2, TransitionKind::Char('e'), 3)
+            .transition(2, TransitionKind::Epsilon, 3)
+            .build();
+        let expected = to_nfa("e{1,2}");
 
         assert_eq!(nfa, expected);
     }
 
     #[test]
     fn test_range_minimum() {
-        let nfa = to_nfa("e{2,}");
-        let transitions = vec![
-            (0, vec![Transition::new(TransitionKind::Char('e'), 1)]),
-            (1, vec![Transition::new(TransitionKind::Epsilon, 2)]),
-            (2, vec![Transition::new(TransitionKind::Char('e'), 3)]),
-            (
-                3,
-                vec![
-                    Transition::new(TransitionKind::Epsilon, 1),
-                    Transition::new(TransitionKind::Epsilon, 4),
-                ],
-            ),
-        ];
-        let expected = Nfa {
-            state_count: 5,
-            transitions: transitions.into_iter().collect(),
-        };
+        let nfa = NfaBuilder::default()
+            .transition(0, TransitionKind::Char('e'), 1)
+            .transition(1, TransitionKind::Epsilon, 2)
+            .transition(2, TransitionKind::Char('e'), 3)
+            .transition(3, TransitionKind::Epsilon, 1)
+            .transition(3, TransitionKind::Epsilon, 4)
+            .build();
+        let expected = to_nfa("e{2,}");
 
         assert_eq!(nfa, expected);
+    }
+
+    #[test]
+    fn test_epsilon_closure() {
+        let nfa = NfaBuilder::default()
+            .transition(0, TransitionKind::Epsilon, 1)
+            .transition(0, TransitionKind::Epsilon, 2)
+            .transition(1, TransitionKind::Epsilon, 3)
+            .build();
+        let expected = [0, 1, 2, 3].into_iter().collect();
+        let eclosure = nfa.epsilon_closure(0);
+
+        assert_eq!(eclosure, expected);
+
+        let nfa = NfaBuilder::default()
+            .transition(0, TransitionKind::Char('a'), 1)
+            .build();
+        let eclosure = nfa.epsilon_closure(0);
+        let expected = [0].into_iter().collect();
+
+        assert_eq!(eclosure, expected);
+
+        let nfa = NfaBuilder::default()
+            .transition(0, TransitionKind::Epsilon, 1)
+            .transition(1, TransitionKind::Epsilon, 2)
+            .transition(2, TransitionKind::Epsilon, 1)
+            .build();
+        let expected = [0, 1, 2].into_iter().collect();
+        let eclosure = nfa.epsilon_closure(0);
+
+        assert_eq!(eclosure, expected);
     }
 }
