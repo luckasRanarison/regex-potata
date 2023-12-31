@@ -1,17 +1,31 @@
 use crate::ast::Node;
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet, VecDeque},
+    fmt::{self, Debug},
+};
 
 const START: usize = 0;
 
 type StateId = usize;
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 enum TransitionKind {
     Char(char),
     Epsilon,
+    Wildcard,
 }
 
-#[derive(Debug, PartialEq)]
+impl fmt::Display for TransitionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TransitionKind::Char(ch) => write!(f, "{ch}"),
+            TransitionKind::Epsilon => write!(f, "ε"),
+            TransitionKind::Wildcard => write!(f, "."),
+        }
+    }
+}
+
+#[derive(PartialEq)]
 struct Transition {
     kind: TransitionKind,
     end: StateId,
@@ -27,7 +41,7 @@ impl Transition {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct Nfa {
     state_count: usize,
     transitions: BTreeMap<usize, Vec<Transition>>,
@@ -86,7 +100,11 @@ impl Nfa {
         Nfa::new(2).with_transition(START, TransitionKind::Char(ch), 1)
     }
 
-    fn concatenate(mut self, other: Nfa) -> Self {
+    fn wildcard() -> Self {
+        Nfa::new(2).with_transition(START, TransitionKind::Wildcard, 1)
+    }
+
+    fn concatenate(self, other: Nfa) -> Self {
         let offset = self.state_count;
 
         self.extend_transition(other.transitions, offset)
@@ -107,14 +125,13 @@ impl Nfa {
     }
 
     fn one_or_more(self) -> Self {
-        // let offset = self.state_count;
-        //
-        // Nfa::new(1)
-        //     .with_transition(START, TransitionKind::Epsilon, 1)
-        //     .extend_transition(self.transitions, 1)
-        //     .with_transition(offset, TransitionKind::Epsilon, 1)
-        //     .with_transition(offset, TransitionKind::Epsilon, offset + 1)
-        todo!()
+        let offset = self.state_count;
+
+        Nfa::new(2)
+            .with_transition(START, TransitionKind::Epsilon, 1)
+            .extend_transition(self.transitions, 1)
+            .with_transition(offset, TransitionKind::Epsilon, 1)
+            .with_transition(offset, TransitionKind::Epsilon, offset + 1)
     }
 
     fn zero_or_one(self) -> Self {
@@ -128,21 +145,23 @@ impl Nfa {
 
     fn epsilon_closure(&self, start: StateId) -> HashSet<StateId> {
         let mut eclosure = HashSet::new();
-        let mut stack = vec![start];
+        let mut stack = VecDeque::new();
 
-        while let Some(state) = stack.pop() {
+        stack.push_back(start);
+
+        while let Some(state) = stack.pop_back() {
             if let Some(transitions) = self.transitions.get(&state) {
                 let eclosed = transitions.iter().filter_map(|t| match t.is_epsilon() {
-                    true => Some(t.end),
-                    false => None,
+                    true if !eclosure.contains(&t.end) => Some(t.end),
+                    _ => None,
                 });
 
-                stack.extend(eclosed.clone());
-                eclosure.extend(eclosed);
+                stack.extend(eclosed);
             }
+
+            eclosure.insert(state);
         }
 
-        eclosure.insert(start);
         eclosure
     }
 
@@ -152,7 +171,7 @@ impl Nfa {
                 .iter()
                 .filter_map(|t| match t.kind {
                     TransitionKind::Char(ch) if ch == input => Some(t.end),
-                    TransitionKind::Epsilon => Some(t.end),
+                    TransitionKind::Wildcard => Some(t.end),
                     _ => None,
                 })
                 .collect()
@@ -214,10 +233,24 @@ impl From<Node> for Nfa {
                 let n = Nfa::from(*node);
                 Nfa::zero_or_one(n)
             }
-            Node::Wildcard => Nfa::epsilon(),
+            Node::Wildcard => Nfa::wildcard(),
             Node::Group(node) => Nfa::from(*node),
             Node::Range { inner, range } => todo!(),
         }
+    }
+}
+
+impl Debug for Nfa {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "State count: {:?}", self.state_count)?;
+
+        for (start, transitions) in &self.transitions {
+            for transition in transitions {
+                writeln!(f, "{} -> {} ({})", start, transition.end, transition.kind)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -226,11 +259,14 @@ mod tests {
     use super::*;
     use crate::parser::Parser;
 
+    fn to_nfa(regex: &str) -> Nfa {
+        let ast = Parser::new(regex).parse().unwrap();
+        Nfa::from(ast)
+    }
+
     #[test]
     fn test_concatenation() {
-        let input = "hi";
-        let ast = Parser::new(input).parse().unwrap();
-        let result = Nfa::from(ast);
+        let result = to_nfa("hi");
         let transitions = vec![
             (0, vec![Transition::new(TransitionKind::Char('h'), 1)]),
             (1, vec![Transition::new(TransitionKind::Epsilon, 2)]),
@@ -246,9 +282,7 @@ mod tests {
 
     #[test]
     fn test_alternation() {
-        let input = "a|b";
-        let ast = Parser::new(input).parse().unwrap();
-        let result = Nfa::from(ast);
+        let result = to_nfa("a|b");
         let transitions = vec![
             (
                 0,
@@ -272,9 +306,7 @@ mod tests {
 
     #[test]
     fn test_simple_match() {
-        let pattern = "(mega|kilo)?bytes?";
-        let ast = Parser::new(pattern).parse().unwrap();
-        let nfa = Nfa::from(ast);
+        let nfa = to_nfa("(mega|kilo)?bytes?");
 
         assert!(nfa.test("byte"));
         assert!(nfa.test("bytes"));
@@ -282,5 +314,25 @@ mod tests {
         assert!(nfa.test("kilobytes"));
         assert!(nfa.test("megabyte"));
         assert!(nfa.test("megabytes"));
+    }
+
+    #[test]
+    fn test_plus_quantifiers() {
+        let nfa = to_nfa("eh+");
+
+        assert!(nfa.test("eh"));
+        assert!(nfa.test("ehh"));
+        assert!(nfa.test("ehhh"));
+        assert!(!nfa.test("ehs"));
+        assert!(!nfa.test("ehss"));
+    }
+
+    #[test]
+    fn test_star_quantifiers() {
+        let nfa = to_nfa("n.*");
+
+        assert!(nfa.test("no"));
+        assert!(nfa.test("nooo"));
+        assert!(nfa.test("nooope"));
     }
 }
