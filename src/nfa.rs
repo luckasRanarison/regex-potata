@@ -40,6 +40,14 @@ impl Transition {
     fn is_epsilon(&self) -> bool {
         self.kind == TransitionKind::Epsilon
     }
+
+    fn accept(&self, input: char) -> bool {
+        match self.kind {
+            TransitionKind::Char(ch) => ch == input,
+            TransitionKind::Wildcard => true,
+            TransitionKind::Epsilon => false,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -148,37 +156,30 @@ impl Nfa {
         stack.push_back(start);
 
         while let Some(state) = stack.pop_back() {
-            if let Some(transitions) = self.transitions.get(&state) {
-                let eclosed = transitions.iter().filter_map(|t| {
-                    if t.is_epsilon() && !eclosure.contains(&t.end) {
-                        Some(t.end)
-                    } else {
-                        None
-                    }
-                });
-
-                stack.extend(eclosed);
+            if !eclosure.insert(state) {
+                continue;
             }
 
-            eclosure.insert(state);
+            if let Some(transitions) = self.transitions.get(&state) {
+                let eclosed_states = transitions
+                    .iter()
+                    .filter_map(|t| t.is_epsilon().then_some(t.end));
+                stack.extend(eclosed_states);
+            }
         }
 
         eclosure
     }
 
     pub fn next(&self, state: StateId, input: char) -> HashSet<StateId> {
-        if let Some(transitions) = self.transitions.get(&state) {
-            transitions
-                .iter()
-                .filter_map(|t| match t.kind {
-                    TransitionKind::Char(ch) if ch == input => Some(t.end),
-                    TransitionKind::Wildcard => Some(t.end),
-                    _ => None,
-                })
-                .collect()
-        } else {
-            HashSet::new()
-        }
+        self.transitions
+            .get(&state)
+            .map_or_else(HashSet::new, |transitions| {
+                transitions
+                    .iter()
+                    .filter_map(|t| t.accept(input).then_some(t.end))
+                    .collect()
+            })
     }
 
     pub fn is_accepting(&self, state: StateId) -> bool {
