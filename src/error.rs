@@ -16,4 +16,6 @@ pub enum ParsingError {
     InvalidEscapeSequence,
     #[error("Invalid quantifier")]
     InvalidQuantifier,
+    #[error("Range out of order")]
+    RangeOutOfOrder,
 }

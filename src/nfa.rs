@@ -1,4 +1,4 @@
-use crate::ast::{Node, Range};
+use crate::ast::{CharacterClass, ClassType, Node, Range};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     fmt::{self, Debug},
@@ -11,17 +11,19 @@ type TransitionMap = BTreeMap<usize, Vec<Transition>>;
 
 #[derive(Clone, PartialEq)]
 enum TransitionKind {
-    Char(char),
+    Character(char),
     Epsilon,
     Wildcard,
+    CharacterClass(CharacterClass),
 }
 
 impl fmt::Display for TransitionKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TransitionKind::Char(ch) => write!(f, "{ch}"),
+            TransitionKind::Character(ch) => write!(f, "{ch}"),
             TransitionKind::Epsilon => write!(f, "ε"),
             TransitionKind::Wildcard => write!(f, "."),
+            TransitionKind::CharacterClass(class) => write!(f, "{class}"),
         }
     }
 }
@@ -41,11 +43,19 @@ impl Transition {
         self.kind == TransitionKind::Epsilon
     }
 
-    fn accept(&self, input: char) -> bool {
-        match self.kind {
-            TransitionKind::Char(ch) => ch == input,
+    fn accept(&self, input: &char) -> bool {
+        match &self.kind {
+            TransitionKind::Character(ch) => ch == input,
             TransitionKind::Wildcard => true,
             TransitionKind::Epsilon => false,
+            TransitionKind::CharacterClass(class) => {
+                let contains = class.inner.iter().any(|c| match c {
+                    ClassType::Atom(ch) => input == ch,
+                    ClassType::Range(lower, upper) => lower <= input && upper >= input,
+                });
+
+                class.negate ^ contains
+            }
         }
     }
 }
@@ -69,7 +79,7 @@ impl Nfa {
 
     fn character(ch: char) -> Self {
         NfaBuilder::default()
-            .transition(START, TransitionKind::Char(ch), 1)
+            .transition(START, TransitionKind::Character(ch), 1)
             .build()
     }
 
@@ -149,6 +159,12 @@ impl Nfa {
         }
     }
 
+    fn class(class: CharacterClass) -> Self {
+        NfaBuilder::default()
+            .transition(START, TransitionKind::CharacterClass(class), 1)
+            .build()
+    }
+
     pub fn epsilon_closure(&self, start: StateId) -> HashSet<StateId> {
         let mut eclosure = HashSet::new();
         let mut stack = VecDeque::new();
@@ -177,7 +193,7 @@ impl Nfa {
             .map_or_else(HashSet::new, |transitions| {
                 transitions
                     .iter()
-                    .filter_map(|t| t.accept(input).then_some(t.end))
+                    .filter_map(|t| t.accept(&input).then_some(t.end))
                     .collect()
             })
     }
@@ -200,6 +216,7 @@ impl From<Node> for Nfa {
             Node::Concatenation(a, b) => Nfa::from(*a).concatenate(Nfa::from(*b)),
             Node::Alternation(a, b) => Nfa::from(*a).alternate(Nfa::from(*b)),
             Node::Range { inner, range } => Nfa::from(*inner).range(range),
+            Node::CharacterClass(class) => Nfa::class(class),
         }
     }
 }
@@ -227,7 +244,7 @@ pub struct NfaBuilder {
 impl NfaBuilder {
     fn add_transition(&mut self, from: StateId, transition: TransitionKind, to: StateId) {
         let transition = Transition::new(transition, to);
-        let transitions = self.transitions.entry(from).or_insert(vec![]);
+        let transitions = self.transitions.entry(from).or_default();
 
         transitions.push(transition);
 
@@ -284,9 +301,9 @@ mod tests {
     #[test]
     fn test_concatenation() {
         let nfa = NfaBuilder::default()
-            .transition(0, TransitionKind::Char('h'), 1)
+            .transition(0, TransitionKind::Character('h'), 1)
             .transition(1, TransitionKind::Epsilon, 2)
-            .transition(2, TransitionKind::Char('i'), 3)
+            .transition(2, TransitionKind::Character('i'), 3)
             .build();
         let expected = to_nfa("hi");
 
@@ -298,9 +315,9 @@ mod tests {
         let nfa = NfaBuilder::default()
             .transition(0, TransitionKind::Epsilon, 1)
             .transition(0, TransitionKind::Epsilon, 3)
-            .transition(1, TransitionKind::Char('a'), 2)
+            .transition(1, TransitionKind::Character('a'), 2)
             .transition(2, TransitionKind::Epsilon, 5)
-            .transition(3, TransitionKind::Char('b'), 4)
+            .transition(3, TransitionKind::Character('b'), 4)
             .transition(4, TransitionKind::Epsilon, 5)
             .build();
         let expected = to_nfa("a|b");
@@ -311,11 +328,11 @@ mod tests {
     #[test]
     fn test_range_excat() {
         let nfa = NfaBuilder::default()
-            .transition(0, TransitionKind::Char('e'), 1)
+            .transition(0, TransitionKind::Character('e'), 1)
             .transition(1, TransitionKind::Epsilon, 2)
-            .transition(2, TransitionKind::Char('e'), 3)
+            .transition(2, TransitionKind::Character('e'), 3)
             .transition(3, TransitionKind::Epsilon, 4)
-            .transition(4, TransitionKind::Char('e'), 5)
+            .transition(4, TransitionKind::Character('e'), 5)
             .build();
         let expected = to_nfa("e{3}");
 
@@ -325,9 +342,9 @@ mod tests {
     #[test]
     fn test_range_between() {
         let nfa = NfaBuilder::default()
-            .transition(0, TransitionKind::Char('e'), 1)
+            .transition(0, TransitionKind::Character('e'), 1)
             .transition(1, TransitionKind::Epsilon, 2)
-            .transition(2, TransitionKind::Char('e'), 3)
+            .transition(2, TransitionKind::Character('e'), 3)
             .transition(2, TransitionKind::Epsilon, 3)
             .build();
         let expected = to_nfa("e{1,2}");
@@ -338,9 +355,9 @@ mod tests {
     #[test]
     fn test_range_minimum() {
         let nfa = NfaBuilder::default()
-            .transition(0, TransitionKind::Char('e'), 1)
+            .transition(0, TransitionKind::Character('e'), 1)
             .transition(1, TransitionKind::Epsilon, 2)
-            .transition(2, TransitionKind::Char('e'), 3)
+            .transition(2, TransitionKind::Character('e'), 3)
             .transition(3, TransitionKind::Epsilon, 1)
             .transition(3, TransitionKind::Epsilon, 4)
             .build();
@@ -362,7 +379,7 @@ mod tests {
         assert_eq!(eclosure, expected);
 
         let nfa = NfaBuilder::default()
-            .transition(0, TransitionKind::Char('a'), 1)
+            .transition(0, TransitionKind::Character('a'), 1)
             .build();
         let eclosure = nfa.epsilon_closure(0);
         let expected = [0].into_iter().collect();

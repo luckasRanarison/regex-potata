@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Node, Range},
+    ast::{CharacterClass, ClassType, Node, Range},
     error::ParsingError,
 };
 use std::{
@@ -53,9 +53,9 @@ impl<'a> Parser<'a> {
         let lhs = self.parse_literal()?;
 
         match self.peek() {
-            Some('*') => Ok(self.next_and(Node::Star(Box::new(lhs)))),
-            Some('+') => Ok(self.next_and(Node::Plus(Box::new(lhs)))),
-            Some('?') => Ok(self.next_and(Node::Optional(Box::new(lhs)))),
+            Some('*') => self.next_and(Node::Star(Box::new(lhs))),
+            Some('+') => self.next_and(Node::Plus(Box::new(lhs))),
+            Some('?') => self.next_and(Node::Optional(Box::new(lhs))),
             Some('{') => {
                 let _ = self.next();
 
@@ -72,8 +72,8 @@ impl<'a> Parser<'a> {
         match self.next() {
             Some('(') => self.parse_group(),
             Some('[') => self.parse_class(),
-            Some('\\') => self.parse_escape(),
             Some('.') => Ok(Node::Wildcard),
+            Some('\\') => Ok(Node::Character(self.parse_escape()?)),
             Some(ch) => Ok(Node::Character(ch)),
             None => Ok(Node::Empty),
         }
@@ -87,7 +87,44 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_class(&mut self) -> Result<Node> {
-        todo!()
+        if let Some(_) = self.peek() {
+            let negate = self.next_if('^');
+            let mut inner = Vec::new();
+
+            while self.peek() != Some(']') {
+                inner.push(self.parse_class_inner()?);
+            }
+
+            let _ = self.next_expect(']');
+
+            Ok(Node::CharacterClass(CharacterClass { negate, inner }))
+        } else {
+            Err(ParsingError::UnexpectedEndOfInput)
+        }
+    }
+
+    fn parse_class_inner(&mut self) -> Result<ClassType> {
+        let first = self.parse_character()?;
+
+        if self.next_if('-') {
+            let second = self.parse_character()?;
+
+            if first > second {
+                Err(ParsingError::RangeOutOfOrder)
+            } else {
+                Ok(ClassType::Range(first, second))
+            }
+        } else {
+            Ok(ClassType::Atom(first))
+        }
+    }
+
+    fn parse_character(&mut self) -> Result<char> {
+        match self.next() {
+            Some('\\') => self.parse_escape(),
+            Some(ch) => Ok(ch),
+            None => Err(ParsingError::UnexpectedEndOfInput),
+        }
     }
 
     fn parse_range(&mut self) -> Result<Range> {
@@ -105,7 +142,7 @@ impl<'a> Parser<'a> {
         let lower = self.take_number()?;
 
         match self.next() {
-            Some('}') => Ok(self.next_and(Range::new(lower, Some(lower)))),
+            Some('}') => self.next_and(Range::new(lower, Some(lower))),
             Some(',') => match self.peek() {
                 Some(ch) if ch.is_numeric() => {
                     let upper = self.take_number()?;
@@ -113,7 +150,7 @@ impl<'a> Parser<'a> {
 
                     Ok(Range::new(lower, Some(upper)))
                 }
-                Some('}') => Ok(self.next_and(Range::new(lower, None))),
+                Some('}') => self.next_and(Range::new(lower, None)),
                 Some(_) => Err(ParsingError::InvalidQuantifier),
                 None => Err(ParsingError::UnexpectedEndOfInput),
             },
@@ -122,9 +159,9 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_escape(&mut self) -> Result<Node> {
+    fn parse_escape(&mut self) -> Result<char> {
         match self.next() {
-            Some(ch) if needs_escape(ch) => Ok(Node::Character(ch)),
+            Some(ch) if needs_escape(ch) => Ok(ch),
             Some(_) => Err(ParsingError::InvalidEscapeSequence),
             None => Err(ParsingError::UnexpectedEndOfInput),
         }
@@ -138,9 +175,18 @@ impl<'a> Parser<'a> {
         self.chars.next()
     }
 
-    fn next_and<T>(&mut self, value: T) -> T {
+    fn next_if(&mut self, ch: char) -> bool {
+        if self.peek() == Some(ch) {
+            self.chars.next();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn next_and<T>(&mut self, value: T) -> Result<T> {
         self.chars.next();
-        value
+        Ok(value)
     }
 
     fn next_expect(&mut self, ch: char) -> Result<char> {
@@ -167,6 +213,8 @@ fn needs_escape(ch: char) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::CharacterClass;
+
     use super::*;
 
     #[test]
@@ -251,6 +299,34 @@ mod tests {
             inner: Box::new(Node::Character('1')),
             range: Range::new(5, None),
         };
+
+        assert_eq!(ast, expected);
+    }
+
+    #[test]
+    fn test_character_class() {
+        let ast = Parser::new(r#"[bar\\]"#).parse().unwrap();
+        let expected = Node::CharacterClass(CharacterClass {
+            negate: false,
+            inner: vec![
+                ClassType::Atom('b'),
+                ClassType::Atom('a'),
+                ClassType::Atom('r'),
+                ClassType::Atom('\\'),
+            ],
+        });
+
+        assert_eq!(ast, expected);
+
+        let ast = Parser::new(r#"[^a-zA-Z.]"#).parse().unwrap();
+        let expected = Node::CharacterClass(CharacterClass {
+            negate: true,
+            inner: vec![
+                ClassType::Range('a', 'z'),
+                ClassType::Range('A', 'Z'),
+                ClassType::Atom('.'),
+            ],
+        });
 
         assert_eq!(ast, expected);
     }

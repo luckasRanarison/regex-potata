@@ -115,4 +115,13 @@ mod test {
         assert!(!re.test(""));
         assert!(!re.test("hey!"));
     }
+
+    #[test]
+    fn test_character_class() {
+        let re = Regex::new(r#"[0-9]+(\.[0-9]+)?"#).unwrap();
+
+        assert!(re.test("10"));
+        assert!(re.test("12.50"));
+        assert!(!re.test(""));
+    }
 }
