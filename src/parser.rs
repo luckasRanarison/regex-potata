@@ -87,7 +87,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_class(&mut self) -> Result<Node> {
-        if let Some(_) = self.peek() {
+        if self.peek().is_some() {
             let negate = self.next_if('^');
             let mut inner = Vec::new();
 
