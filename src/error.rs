@@ -14,6 +14,10 @@ pub enum ParsingError {
     MissingCharacter(char),
     #[error("Invalid escape sequence")]
     InvalidEscapeSequence,
-    #[error("Invalid quantifier")]
-    InvalidQuantifier,
+    #[error("Invalid range quantifier")]
+    InvalidRangeQuantifier,
+    #[error("Invalid character class")]
+    InvalidCharacterClass,
+    #[error("Range out of order")]
+    RangeOutOfOrder,
 }

@@ -1,177 +1,185 @@
 use crate::{
-    ast::{Node, Range},
+    ast::{Class, ClassMember, Node, Range},
     error::ParsingError,
 };
-use std::{
-    iter::{self, Peekable},
-    str::Chars,
-};
 
-pub type Result<T> = std::result::Result<T, ParsingError>;
+type Result<T> = std::result::Result<T, ParsingError>;
 
-pub struct Parser<'a> {
-    chars: Peekable<Chars<'a>>,
+pub fn parse_regex(input: &str) -> Result<Node> {
+    parse_alternation(input).map(|(result, _)| result)
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(input: &'a str) -> Self {
-        Self {
-            chars: input.chars().peekable(),
+fn parse_alternation(input: &str) -> Result<(Node, &str)> {
+    parse_concat(input).and_then(|(lhs, rest)| match rest.get(..1) {
+        Some("|") => parse_alternation(&rest[1..])
+            .map(|(rhs, rest)| (Node::Alternation(Box::new(lhs), Box::new(rhs)), rest)),
+        _ => Ok((lhs, rest)),
+    })
+}
+
+fn parse_concat(input: &str) -> Result<(Node, &str)> {
+    parse_quantifier(input).and_then(|(lhs, rest)| match rest.get(..1) {
+        Some("|") | Some(")") | None => Ok((lhs, rest)),
+        Some(_) => parse_concat(rest)
+            .map(|(rhs, rest)| (Node::Concatenation(Box::new(lhs), Box::new(rhs)), rest)),
+    })
+}
+
+fn parse_quantifier(input: &str) -> Result<(Node, &str)> {
+    parser_atom(input).and_then(|(result, rest)| match rest.get(..1) {
+        Some("+") => Ok((Node::Plus(Box::new(result)), &rest[1..])),
+        Some("*") => Ok((Node::Star(Box::new(result)), &rest[1..])),
+        Some("?") => Ok((Node::Optional(Box::new(result)), &rest[1..])),
+        Some("{") => {
+            let (range, rest) = parse_range(&rest[1..])?;
+            let node = Node::Range {
+                inner: Box::new(result),
+                range,
+            };
+
+            Ok((node, rest))
         }
-    }
+        _ => Ok((result, rest)),
+    })
+}
 
-    pub fn parse(&mut self) -> Result<Node> {
-        self.parse_alternation()
-    }
-
-    fn parse_alternation(&mut self) -> Result<Node> {
-        let lhs = self.parse_concatenaion()?;
-
-        if let Some('|') = self.peek() {
-            let _ = self.next();
-            let rhs = self.parse_alternation()?;
-
-            Ok(Node::Alternation(Box::new(lhs), Box::new(rhs)))
-        } else {
-            Ok(lhs)
+fn parse_range(input: &str) -> Result<(Range, &str)> {
+    take_number(input).and_then(|(lower, rest)| match (lower, rest.get(..1)) {
+        (Some(lower), Some(",")) => {
+            parse_range_upper(&rest[1..]).map(|(upper, rest)| (Range::new(lower, upper), rest))
         }
+        (Some(lower), Some("}")) => Ok((Range::new(lower, Some(lower)), &rest[1..])),
+        _ => Err(ParsingError::InvalidRangeQuantifier),
+    })
+}
+
+fn parse_range_upper(input: &str) -> Result<(Option<usize>, &str)> {
+    match input.get(..1) {
+        Some("}") => Ok((None, &input[1..])),
+        Some(_) => take_number(&input).and_then(|(number, rest)| match (number, rest.get(..1)) {
+            (Some(number), Some("}")) => Ok((Some(number), &rest[1..])),
+            _ => Err(ParsingError::InvalidRangeQuantifier),
+        }),
+        None => Err(ParsingError::InvalidRangeQuantifier),
     }
+}
 
-    fn parse_concatenaion(&mut self) -> Result<Node> {
-        let lhs = self.parse_unary()?;
-
-        match self.peek() {
-            Some('|') | Some(')') | None => Ok(lhs),
-            Some(_) => {
-                let rhs = self.parse_concatenaion()?;
-                Ok(Node::Concatenation(Box::new(lhs), Box::new(rhs)))
-            }
-        }
+fn parser_atom(input: &str) -> Result<(Node, &str)> {
+    match input.chars().next() {
+        Some(c) => match c {
+            '(' => parse_group(&input[1..]),
+            '[' => parse_class(&input[1..]),
+            '\\' => parse_metachar(&input[1..]),
+            '.' => Ok((Node::Wildcard, &input[1..])),
+            _ => Ok((Node::Character(c), &input[c.len_utf8()..])),
+        },
+        None => Ok((Node::Empty, &input)),
     }
+}
 
-    fn parse_unary(&mut self) -> Result<Node> {
-        let lhs = self.parse_literal()?;
-
-        match self.peek() {
-            Some('*') => Ok(self.next_and(Node::Star(Box::new(lhs)))),
-            Some('+') => Ok(self.next_and(Node::Plus(Box::new(lhs)))),
-            Some('?') => Ok(self.next_and(Node::Optional(Box::new(lhs)))),
-            Some('{') => {
-                let _ = self.next();
-
-                Ok(Node::Range {
-                    inner: Box::new(lhs),
-                    range: self.parse_range()?,
-                })
-            }
-            _ => Ok(lhs),
-        }
+fn parse_metachar(input: &str) -> Result<(Node, &str)> {
+    match input.chars().next() {
+        Some(ch) if needs_escape(ch) => Ok((Node::Character(ch), &input[1..])),
+        _ => Err(ParsingError::InvalidEscapeSequence),
     }
+}
 
-    fn parse_literal(&mut self) -> Result<Node> {
-        match self.next() {
-            Some('(') => self.parse_group(),
-            Some('[') => self.parse_class(),
-            Some('\\') => self.parse_escape(),
-            Some('.') => Ok(Node::Wildcard),
-            Some(ch) => Ok(Node::Character(ch)),
-            None => Ok(Node::Empty),
-        }
-    }
+fn parse_class(input: &str) -> Result<(Node, &str)> {
+    let (negate, rest) = match input.get(..1) {
+        Some("^") => (true, &input[1..]),
+        _ => (false, input),
+    };
 
-    fn parse_group(&mut self) -> Result<Node> {
-        let inner = Box::new(self.parse_alternation()?);
-        let _ = self.next_expect(')')?;
+    parse_class_members(rest, Vec::new())
+        .map(|(members, rest)| (Node::CharacterClass(Class { negate, members }), rest))
+}
 
-        Ok(Node::Group(inner))
-    }
+fn parse_class_members(input: &str, acc: Vec<ClassMember>) -> Result<(Vec<ClassMember>, &str)> {
+    let (ch, rest) = take_char(input);
+    let (next, next_rest) = take_char(rest);
 
-    fn parse_class(&mut self) -> Result<Node> {
-        todo!()
-    }
-
-    fn parse_range(&mut self) -> Result<Range> {
-        if let Some(ch) = self.peek() {
-            match ch {
-                ch if ch.is_numeric() => self.parse_range_inner(),
-                _ => Err(ParsingError::InvalidQuantifier),
-            }
-        } else {
-            Err(ParsingError::UnexpectedEndOfInput)
-        }
-    }
-
-    fn parse_range_inner(&mut self) -> Result<Range> {
-        let lower = self.take_number()?;
-
-        match self.next() {
-            Some('}') => Ok(self.next_and(Range::new(lower, Some(lower)))),
-            Some(',') => match self.peek() {
-                Some(ch) if ch.is_numeric() => {
-                    let upper = self.take_number()?;
-                    let _ = self.next_expect('}')?;
-
-                    Ok(Range::new(lower, Some(upper)))
+    match (ch, next) {
+        (Some(']'), _) => Ok((acc, rest)),
+        (Some('\\'), Some(ch)) => match needs_escape(ch) {
+            true => match take_char(next_rest) {
+                (Some('-'), rest) => parse_class_range(rest, ch, acc),
+                _ => {
+                    let tail = vec![ClassMember::Atom(ch)];
+                    let acc = vec![acc, tail].concat();
+                    parse_class_members(next_rest, acc)
                 }
-                Some('}') => Ok(self.next_and(Range::new(lower, None))),
-                Some(_) => Err(ParsingError::InvalidQuantifier),
-                None => Err(ParsingError::UnexpectedEndOfInput),
             },
-            Some(_) => Err(ParsingError::InvalidQuantifier),
-            None => Err(ParsingError::UnexpectedEndOfInput),
+            false => Err(ParsingError::InvalidEscapeSequence),
+        },
+        (Some(ch), Some('-')) => parse_class_range(next_rest, ch, acc),
+        (Some(ch), _) => {
+            let tail = vec![ClassMember::Atom(ch)];
+            let acc = vec![acc, tail].concat();
+            parse_class_members(rest, acc)
         }
+        _ => Err(ParsingError::UnexpectedEndOfInput),
     }
+}
 
-    fn parse_escape(&mut self) -> Result<Node> {
-        match self.next() {
-            Some(ch) if needs_escape(ch) => Ok(Node::Character(ch)),
-            Some(_) => Err(ParsingError::InvalidEscapeSequence),
-            None => Err(ParsingError::UnexpectedEndOfInput),
-        }
+fn parse_class_range(
+    input: &str,
+    lower: char,
+    acc: Vec<ClassMember>,
+) -> Result<(Vec<ClassMember>, &str)> {
+    match take_char(input) {
+        (Some(upper), rest) => match upper > lower {
+            true => {
+                let tail = vec![ClassMember::Range(lower, upper)];
+                let acc = vec![acc, tail].concat();
+                parse_class_members(rest, acc)
+            }
+            false => Err(ParsingError::RangeOutOfOrder),
+        },
+        _ => Err(ParsingError::UnexpectedEndOfInput),
     }
+}
 
-    fn peek(&mut self) -> Option<char> {
-        self.chars.peek().cloned()
+fn take_char(input: &str) -> (Option<char>, &str) {
+    match input.chars().next() {
+        Some(c) => (Some(c), &input[c.len_utf8()..]),
+        None => (None, input),
     }
+}
 
-    fn next(&mut self) -> Option<char> {
-        self.chars.next()
-    }
+fn parse_group(input: &str) -> Result<(Node, &str)> {
+    parse_alternation(input).and_then(|(result, rest)| match rest.get(..1) {
+        Some(")") => Ok((Node::Group(Box::new(result)), &rest[1..])),
+        _ => Err(ParsingError::MissingCharacter(')')),
+    })
+}
 
-    fn next_and<T>(&mut self, value: T) -> T {
-        self.chars.next();
-        value
-    }
+fn take_number(input: &str) -> Result<(Option<usize>, &str)> {
+    let index = input
+        .char_indices()
+        .find_map(|(i, c)| (!c.is_ascii_digit()).then_some(i))
+        .unwrap_or(input.len());
+    let number = input[..index].parse::<usize>().ok();
 
-    fn next_expect(&mut self, ch: char) -> Result<char> {
-        self.chars
-            .next()
-            .filter(|&next| next == ch)
-            .ok_or(ParsingError::MissingCharacter(ch))
-    }
-
-    fn take_number(&mut self) -> Result<usize> {
-        iter::from_fn(|| self.chars.next_if(|ch| ch.is_numeric()))
-            .collect::<String>()
-            .parse::<usize>()
-            .or(Err(ParsingError::InvalidQuantifier))
-    }
+    Ok((number, &input[index..]))
 }
 
 fn needs_escape(ch: char) -> bool {
     matches!(
         ch,
-        '\\' | '[' | ']' | '(' | ')' | '{' | '}' | '.' | '?' | '+' | '*'
+        '\\' | '[' | ']' | '(' | ')' | '{' | '}' | '.' | '?' | '+' | '*' | '-'
     )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::{
+        ast::{Class, ClassMember, Node, Range},
+        parser::parse_regex,
+    };
 
     #[test]
     fn test_chars() {
-        let ast = Parser::new("ok!").parse().unwrap();
+        let ast = parse_regex("ok!").unwrap();
         let expected = Node::Concatenation(
             Box::new(Node::Character('o')),
             Box::new(Node::Concatenation(
@@ -185,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_unary() {
-        let ast = Parser::new("les?").parse().unwrap();
+        let ast = parse_regex("les?").unwrap();
         let expected = Node::Concatenation(
             Box::new(Node::Character('l')),
             Box::new(Node::Concatenation(
@@ -199,7 +207,7 @@ mod tests {
 
     #[test]
     fn test_alternation() {
-        let ast = Parser::new("la|le").parse().unwrap();
+        let ast = parse_regex("la|le").unwrap();
         let expected = Node::Alternation(
             Box::new(Node::Concatenation(
                 Box::new(Node::Character('l')),
@@ -216,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_group_alternation() {
-        let ast = Parser::new("l(a|e)").parse().unwrap();
+        let ast = parse_regex("l(a|e)").unwrap();
         let expected = Node::Concatenation(
             Box::new(Node::Character('l')),
             Box::new(Node::Group(Box::new(Node::Alternation(
@@ -229,8 +237,8 @@ mod tests {
     }
 
     #[test]
-    fn test_quantifier() {
-        let ast = Parser::new("1{2,5}").parse().unwrap();
+    fn test_range_quantifier() {
+        let ast = parse_regex("1{2,5}").unwrap();
         let expected = Node::Range {
             inner: Box::new(Node::Character('1')),
             range: Range::new(2, Some(5)),
@@ -238,7 +246,7 @@ mod tests {
 
         assert_eq!(ast, expected);
 
-        let ast = Parser::new("1{5}").parse().unwrap();
+        let ast = parse_regex("1{5}").unwrap();
         let expected = Node::Range {
             inner: Box::new(Node::Character('1')),
             range: Range::new(5, Some(5)),
@@ -246,11 +254,39 @@ mod tests {
 
         assert_eq!(ast, expected);
 
-        let ast = Parser::new("1{5,}").parse().unwrap();
+        let ast = parse_regex("1{5,}").unwrap();
         let expected = Node::Range {
             inner: Box::new(Node::Character('1')),
             range: Range::new(5, None),
         };
+
+        assert_eq!(ast, expected);
+    }
+
+    #[test]
+    fn test_character_class() {
+        let ast = parse_regex(r#"[bar\\]"#).unwrap();
+        let expected = Node::CharacterClass(Class {
+            negate: false,
+            members: vec![
+                ClassMember::Atom('b'),
+                ClassMember::Atom('a'),
+                ClassMember::Atom('r'),
+                ClassMember::Atom('\\'),
+            ],
+        });
+
+        assert_eq!(ast, expected);
+
+        let ast = parse_regex(r#"[^a-zA-Z.]"#).unwrap();
+        let expected = Node::CharacterClass(Class {
+            negate: true,
+            members: vec![
+                ClassMember::Range('a', 'z'),
+                ClassMember::Range('A', 'Z'),
+                ClassMember::Atom('.'),
+            ],
+        });
 
         assert_eq!(ast, expected);
     }

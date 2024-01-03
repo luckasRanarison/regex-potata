@@ -1,7 +1,7 @@
 use crate::{
     error::Error,
     nfa::{Nfa, START},
-    parser::Parser,
+    parser::parse_regex,
 };
 use std::collections::HashSet;
 
@@ -12,7 +12,7 @@ pub struct Regex {
 
 impl Regex {
     pub fn new(pattern: &str) -> Result<Self, Error> {
-        let ast = Parser::new(pattern).parse()?;
+        let ast = parse_regex(pattern)?;
         let nfa = Nfa::from(ast);
 
         Ok(Self { nfa })
@@ -114,5 +114,14 @@ mod test {
         assert!(re.test("hey!hi"));
         assert!(!re.test(""));
         assert!(!re.test("hey!"));
+    }
+
+    #[test]
+    fn test_character_class() {
+        let re = Regex::new(r#"[0-9]+(\.[0-9]+)?"#).unwrap();
+
+        assert!(re.test("10"));
+        assert!(re.test("12.50"));
+        assert!(!re.test(""));
     }
 }
