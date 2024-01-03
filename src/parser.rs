@@ -1,5 +1,5 @@
 use crate::{
-    ast::{CharacterClass, ClassType, Node, Range},
+    ast::{Class, ClassMember, Node, Range},
     error::ParsingError,
 };
 use std::{
@@ -97,13 +97,16 @@ impl<'a> Parser<'a> {
 
             let _ = self.next_expect(']');
 
-            Ok(Node::CharacterClass(CharacterClass { negate, inner }))
+            Ok(Node::CharacterClass(Class {
+                negate,
+                members: inner,
+            }))
         } else {
             Err(ParsingError::UnexpectedEndOfInput)
         }
     }
 
-    fn parse_class_inner(&mut self) -> Result<ClassType> {
+    fn parse_class_inner(&mut self) -> Result<ClassMember> {
         let first = self.parse_character()?;
 
         if self.next_if('-') {
@@ -112,10 +115,10 @@ impl<'a> Parser<'a> {
             if first > second {
                 Err(ParsingError::RangeOutOfOrder)
             } else {
-                Ok(ClassType::Range(first, second))
+                Ok(ClassMember::Range(first, second))
             }
         } else {
-            Ok(ClassType::Atom(first))
+            Ok(ClassMember::Atom(first))
         }
     }
 
@@ -131,7 +134,7 @@ impl<'a> Parser<'a> {
         if let Some(ch) = self.peek() {
             match ch {
                 ch if ch.is_numeric() => self.parse_range_inner(),
-                _ => Err(ParsingError::InvalidQuantifier),
+                _ => Err(ParsingError::InvalidRangeQuantifier),
             }
         } else {
             Err(ParsingError::UnexpectedEndOfInput)
@@ -151,10 +154,10 @@ impl<'a> Parser<'a> {
                     Ok(Range::new(lower, Some(upper)))
                 }
                 Some('}') => self.next_and(Range::new(lower, None)),
-                Some(_) => Err(ParsingError::InvalidQuantifier),
+                Some(_) => Err(ParsingError::InvalidRangeQuantifier),
                 None => Err(ParsingError::UnexpectedEndOfInput),
             },
-            Some(_) => Err(ParsingError::InvalidQuantifier),
+            Some(_) => Err(ParsingError::InvalidRangeQuantifier),
             None => Err(ParsingError::UnexpectedEndOfInput),
         }
     }
@@ -200,7 +203,7 @@ impl<'a> Parser<'a> {
         iter::from_fn(|| self.chars.next_if(|ch| ch.is_numeric()))
             .collect::<String>()
             .parse::<usize>()
-            .or(Err(ParsingError::InvalidQuantifier))
+            .or(Err(ParsingError::InvalidRangeQuantifier))
     }
 }
 
@@ -213,7 +216,7 @@ fn needs_escape(ch: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::CharacterClass;
+    use crate::ast::Class;
 
     use super::*;
 
@@ -306,25 +309,25 @@ mod tests {
     #[test]
     fn test_character_class() {
         let ast = Parser::new(r#"[bar\\]"#).parse().unwrap();
-        let expected = Node::CharacterClass(CharacterClass {
+        let expected = Node::CharacterClass(Class {
             negate: false,
-            inner: vec![
-                ClassType::Atom('b'),
-                ClassType::Atom('a'),
-                ClassType::Atom('r'),
-                ClassType::Atom('\\'),
+            members: vec![
+                ClassMember::Atom('b'),
+                ClassMember::Atom('a'),
+                ClassMember::Atom('r'),
+                ClassMember::Atom('\\'),
             ],
         });
 
         assert_eq!(ast, expected);
 
         let ast = Parser::new(r#"[^a-zA-Z.]"#).parse().unwrap();
-        let expected = Node::CharacterClass(CharacterClass {
+        let expected = Node::CharacterClass(Class {
             negate: true,
-            inner: vec![
-                ClassType::Range('a', 'z'),
-                ClassType::Range('A', 'Z'),
-                ClassType::Atom('.'),
+            members: vec![
+                ClassMember::Range('a', 'z'),
+                ClassMember::Range('A', 'Z'),
+                ClassMember::Atom('.'),
             ],
         });
 

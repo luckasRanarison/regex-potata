@@ -12,7 +12,7 @@ pub enum Node {
     Group(Box<Node>),
     Wildcard,
     Character(char),
-    CharacterClass(CharacterClass),
+    CharacterClass(Class),
 }
 
 #[derive(Debug, PartialEq)]
@@ -28,35 +28,35 @@ impl Range {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ClassType {
+pub enum ClassMember {
     Atom(char),
     Range(char, char),
 }
 
-impl fmt::Display for ClassType {
+impl fmt::Display for ClassMember {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ClassType::Atom(ch) => write!(f, "{ch}"),
-            ClassType::Range(lower, upper) => write!(f, "{lower}-{upper}"),
+            ClassMember::Atom(ch) => write!(f, "{ch}"),
+            ClassMember::Range(lower, upper) => write!(f, "{lower}-{upper}"),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CharacterClass {
+pub struct Class {
     pub negate: bool,
-    pub inner: Vec<ClassType>,
+    pub members: Vec<ClassMember>,
 }
 
-impl fmt::Display for CharacterClass {
+impl fmt::Display for Class {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "[{}{}]",
             if self.negate { "^" } else { "" },
-            self.inner
+            self.members
                 .iter()
-                .map(ClassType::to_string)
+                .map(ClassMember::to_string)
                 .collect::<String>()
         )
     }
