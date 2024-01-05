@@ -3,7 +3,7 @@ use crate::{
     nfa::{Nfa, StateId, START},
     parser::parse_regex,
 };
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt};
 
 #[derive(Debug)]
 pub struct Regex {
@@ -70,13 +70,15 @@ pub struct Match<'a> {
     pub string: &'a str,
 }
 
+impl fmt::Display for Match<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.string)
+    }
+}
+
 impl<'a> Match<'a> {
     fn new(start: usize, end: usize, string: &'a str) -> Self {
         Self { start, end, string }
-    }
-
-    pub fn to_string(&self) -> String {
-        self.string.to_string()
     }
 }
 

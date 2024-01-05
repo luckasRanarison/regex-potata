@@ -98,18 +98,19 @@ fn parse_class_members_inner(
     input: &str,
     acc: Vec<ClassMember>,
 ) -> Result<(Vec<ClassMember>, &str)> {
-    match parse_char(input)? {
-        (']', false, rest) => Ok((acc, rest)),
-        (ch, _, rest) => {
-            let (rest, tail) = if rest.starts_with("-") {
-                let (upper, _, rest) = parse_char(&rest[1..])?;
-                (rest, vec![ClassMember::Range(ch, upper)])
-            } else {
-                (rest, vec![ClassMember::Atom(ch)])
-            };
+    let (ch, is_escaped, rest) = parse_char(input)?;
 
-            parse_class_members_inner(rest, vec![acc, tail].concat())
-        }
+    if ch == ']' && !is_escaped {
+        return Ok((acc, rest));
+    }
+
+    if let Some(rest) = rest.strip_prefix('-') {
+        let (upper, _, rest) = parse_char(rest)?;
+        let acc = vec![acc, vec![ClassMember::Range(ch, upper)]].concat();
+        parse_class_members_inner(rest, acc)
+    } else {
+        let acc = vec![acc, vec![ClassMember::Atom(ch)]].concat();
+        parse_class_members_inner(rest, acc)
     }
 }
 
@@ -132,7 +133,7 @@ fn parse_group(input: &str) -> Result<(Node, &str)> {
         Some("?<") => {
             let (name, rest) = take_alphabetic(&input[2..]);
 
-            if name.is_empty() || !rest.starts_with(">") {
+            if name.is_empty() || !rest.starts_with('>') {
                 return Err(ParsingError::InvalidCaptureName);
             }
 
