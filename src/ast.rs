@@ -12,7 +12,44 @@ pub enum Node {
     Group(Box<Node>),
     Wildcard,
     Character(char),
-    CharacterClass(Class),
+    CharacterClass(CharacterClass),
+}
+
+impl Node {
+    pub fn alternation(lhs: Node, rhs: Node) -> Self {
+        Self::Alternation(Box::new(lhs), Box::new(rhs))
+    }
+
+    pub fn concatenation(lhs: Node, rhs: Node) -> Self {
+        Self::Concatenation(Box::new(lhs), Box::new(rhs))
+    }
+
+    pub fn star(operand: Node) -> Self {
+        Self::Star(Box::new(operand))
+    }
+
+    pub fn plus(operand: Node) -> Self {
+        Self::Plus(Box::new(operand))
+    }
+
+    pub fn optional(operand: Node) -> Self {
+        Self::Optional(Box::new(operand))
+    }
+
+    pub fn range(inner: Node, range: Range) -> Self {
+        Self::Range {
+            inner: Box::new(inner),
+            range,
+        }
+    }
+
+    pub fn group(inner: Node) -> Self {
+        Self::Group(Box::new(inner))
+    }
+
+    pub fn class(negate: bool, members: Vec<ClassMember>) -> Self {
+        Self::CharacterClass(CharacterClass { negate, members })
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -43,12 +80,12 @@ impl fmt::Display for ClassMember {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Class {
+pub struct CharacterClass {
     pub negate: bool,
     pub members: Vec<ClassMember>,
 }
 
-impl fmt::Display for Class {
+impl fmt::Display for CharacterClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

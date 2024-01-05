@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Class, ClassMember, Node, Range},
+    ast::{ClassMember, Node, Range},
     error::ParsingError,
 };
 
@@ -11,8 +11,9 @@ pub fn parse_regex(input: &str) -> Result<Node> {
 
 fn parse_alternation(input: &str) -> Result<(Node, &str)> {
     parse_concat(input).and_then(|(lhs, rest)| match rest.get(..1) {
-        Some("|") => parse_alternation(&rest[1..])
-            .map(|(rhs, rest)| (Node::Alternation(Box::new(lhs), Box::new(rhs)), rest)),
+        Some("|") => {
+            parse_alternation(&rest[1..]).map(|(rhs, rest)| (Node::alternation(lhs, rhs), rest))
+        }
         _ => Ok((lhs, rest)),
     })
 }
@@ -20,24 +21,17 @@ fn parse_alternation(input: &str) -> Result<(Node, &str)> {
 fn parse_concat(input: &str) -> Result<(Node, &str)> {
     parse_quantifier(input).and_then(|(lhs, rest)| match rest.get(..1) {
         Some("|") | Some(")") | None => Ok((lhs, rest)),
-        Some(_) => parse_concat(rest)
-            .map(|(rhs, rest)| (Node::Concatenation(Box::new(lhs), Box::new(rhs)), rest)),
+        Some(_) => parse_concat(rest).map(|(rhs, rest)| (Node::concatenation(lhs, rhs), rest)),
     })
 }
 
 fn parse_quantifier(input: &str) -> Result<(Node, &str)> {
     parser_atom(input).and_then(|(result, rest)| match rest.get(..1) {
-        Some("+") => Ok((Node::Plus(Box::new(result)), &rest[1..])),
-        Some("*") => Ok((Node::Star(Box::new(result)), &rest[1..])),
-        Some("?") => Ok((Node::Optional(Box::new(result)), &rest[1..])),
+        Some("+") => Ok((Node::plus(result), &rest[1..])),
+        Some("*") => Ok((Node::star(result), &rest[1..])),
+        Some("?") => Ok((Node::optional(result), &rest[1..])),
         Some("{") => {
-            let (range, rest) = parse_range(&rest[1..])?;
-            let node = Node::Range {
-                inner: Box::new(result),
-                range,
-            };
-
-            Ok((node, rest))
+            parse_range(&rest[1..]).map(|(range, rest)| (Node::range(result, range), rest))
         }
         _ => Ok((result, rest)),
     })
@@ -56,7 +50,7 @@ fn parse_range(input: &str) -> Result<(Range, &str)> {
 fn parse_range_upper(input: &str) -> Result<(Option<usize>, &str)> {
     match input.get(..1) {
         Some("}") => Ok((None, &input[1..])),
-        Some(_) => take_number(&input).and_then(|(number, rest)| match (number, rest.get(..1)) {
+        Some(_) => take_number(input).and_then(|(number, rest)| match (number, rest.get(..1)) {
             (Some(number), Some("}")) => Ok((Some(number), &rest[1..])),
             _ => Err(ParsingError::InvalidRangeQuantifier),
         }),
@@ -73,14 +67,17 @@ fn parser_atom(input: &str) -> Result<(Node, &str)> {
             '.' => Ok((Node::Wildcard, &input[1..])),
             _ => Ok((Node::Character(c), &input[c.len_utf8()..])),
         },
-        None => Ok((Node::Empty, &input)),
+        None => Ok((Node::Empty, input)),
     }
 }
 
 fn parse_metachar(input: &str) -> Result<(Node, &str)> {
     match input.chars().next() {
         Some(ch) if needs_escape(ch) => Ok((Node::Character(ch), &input[1..])),
-        _ => Err(ParsingError::InvalidEscapeSequence),
+        Some(ch) => get_range_alias(ch)
+            .map(|range| (range, &input[1..]))
+            .ok_or(ParsingError::InvalidEscapeSequence),
+        None => Err(ParsingError::UnexpectedEndOfInput),
     }
 }
 
@@ -90,51 +87,41 @@ fn parse_class(input: &str) -> Result<(Node, &str)> {
         _ => (false, input),
     };
 
-    parse_class_members(rest, Vec::new())
-        .map(|(members, rest)| (Node::CharacterClass(Class { negate, members }), rest))
+    parse_class_members(rest).map(|(members, rest)| (Node::class(negate, members), rest))
 }
 
-fn parse_class_members(input: &str, acc: Vec<ClassMember>) -> Result<(Vec<ClassMember>, &str)> {
-    let (ch, rest) = take_char(input);
-    let (next, next_rest) = take_char(rest);
+fn parse_class_members(input: &str) -> Result<(Vec<ClassMember>, &str)> {
+    parse_class_members_inner(input, Vec::new())
+}
 
-    match (ch, next) {
-        (Some(']'), _) => Ok((acc, rest)),
-        (Some('\\'), Some(ch)) => match needs_escape(ch) {
-            true => match take_char(next_rest) {
-                (Some('-'), rest) => parse_class_range(rest, ch, acc),
-                _ => {
-                    let tail = vec![ClassMember::Atom(ch)];
-                    let acc = vec![acc, tail].concat();
-                    parse_class_members(next_rest, acc)
-                }
-            },
-            false => Err(ParsingError::InvalidEscapeSequence),
-        },
-        (Some(ch), Some('-')) => parse_class_range(next_rest, ch, acc),
-        (Some(ch), _) => {
-            let tail = vec![ClassMember::Atom(ch)];
-            let acc = vec![acc, tail].concat();
-            parse_class_members(rest, acc)
+fn parse_class_members_inner(
+    input: &str,
+    acc: Vec<ClassMember>,
+) -> Result<(Vec<ClassMember>, &str)> {
+    match parse_char(input)? {
+        (']', false, rest) => Ok((acc, rest)),
+        (ch, _, rest) => {
+            let (rest, tail) = if rest.starts_with("-") {
+                let (upper, _, rest) = parse_char(&rest[1..])?;
+                (rest, vec![ClassMember::Range(ch, upper)])
+            } else {
+                (rest, vec![ClassMember::Atom(ch)])
+            };
+
+            parse_class_members_inner(rest, vec![acc, tail].concat())
         }
-        _ => Err(ParsingError::UnexpectedEndOfInput),
     }
 }
 
-fn parse_class_range(
-    input: &str,
-    lower: char,
-    acc: Vec<ClassMember>,
-) -> Result<(Vec<ClassMember>, &str)> {
+fn parse_char(input: &str) -> Result<(char, bool, &str)> {
     match take_char(input) {
-        (Some(upper), rest) => match upper > lower {
-            true => {
-                let tail = vec![ClassMember::Range(lower, upper)];
-                let acc = vec![acc, tail].concat();
-                parse_class_members(rest, acc)
-            }
-            false => Err(ParsingError::RangeOutOfOrder),
+        (Some('\\'), rest) => match take_char(rest) {
+            (Some(next), rest) => needs_escape(next)
+                .then_some((next, true, rest))
+                .ok_or(ParsingError::InvalidEscapeSequence),
+            _ => Err(ParsingError::UnexpectedEndOfInput),
         },
+        (Some(ch), rest) => Ok((ch, false, rest)),
         _ => Err(ParsingError::UnexpectedEndOfInput),
     }
 }
@@ -148,7 +135,7 @@ fn take_char(input: &str) -> (Option<char>, &str) {
 
 fn parse_group(input: &str) -> Result<(Node, &str)> {
     parse_alternation(input).and_then(|(result, rest)| match rest.get(..1) {
-        Some(")") => Ok((Node::Group(Box::new(result)), &rest[1..])),
+        Some(")") => Ok((Node::group(result), &rest[1..])),
         _ => Err(ParsingError::MissingCharacter(')')),
     })
 }
@@ -170,22 +157,57 @@ fn needs_escape(ch: char) -> bool {
     )
 }
 
+#[inline]
+fn digit_range() -> Vec<ClassMember> {
+    vec![ClassMember::Range('0', '9')]
+}
+
+#[inline]
+fn word_range() -> Vec<ClassMember> {
+    vec![
+        ClassMember::Range('0', '9'),
+        ClassMember::Range('a', 'z'),
+        ClassMember::Range('A', 'Z'),
+    ]
+}
+
+#[inline]
+fn whitespace() -> Vec<ClassMember> {
+    vec![
+        ClassMember::Atom(' '),
+        ClassMember::Atom('\t'),
+        ClassMember::Atom('\n'),
+        ClassMember::Atom('\r'),
+        ClassMember::Atom('\x0C'),
+        ClassMember::Atom('\x0B'),
+    ]
+}
+
+fn get_range_alias(ch: char) -> Option<Node> {
+    match ch {
+        'd' => Some(Node::class(false, digit_range())),
+        'D' => Some(Node::class(true, digit_range())),
+        'w' => Some(Node::class(false, word_range())),
+        'W' => Some(Node::class(true, word_range())),
+        's' => Some(Node::class(false, whitespace())),
+        'S' => Some(Node::class(true, whitespace())),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
-        ast::{Class, ClassMember, Node, Range},
+        ast::{ClassMember, Node, Range},
         parser::parse_regex,
     };
 
     #[test]
     fn test_chars() {
         let ast = parse_regex("ok!").unwrap();
-        let expected = Node::Concatenation(
-            Box::new(Node::Character('o')),
-            Box::new(Node::Concatenation(
-                Box::new(Node::Character('k')),
-                Box::new(Node::Character('!')),
-            )),
+        let expected = Node::concatenation(
+            Node::Character('o'),
+            Node::concatenation(Node::Character('k'), Node::Character('!')),
         );
 
         assert_eq!(ast, expected);
@@ -194,12 +216,9 @@ mod tests {
     #[test]
     fn test_unary() {
         let ast = parse_regex("les?").unwrap();
-        let expected = Node::Concatenation(
-            Box::new(Node::Character('l')),
-            Box::new(Node::Concatenation(
-                Box::new(Node::Character('e')),
-                Box::new(Node::Optional(Box::new(Node::Character('s')))),
-            )),
+        let expected = Node::concatenation(
+            Node::Character('l'),
+            Node::concatenation(Node::Character('e'), Node::optional(Node::Character('s'))),
         );
 
         assert_eq!(ast, expected);
@@ -208,15 +227,9 @@ mod tests {
     #[test]
     fn test_alternation() {
         let ast = parse_regex("la|le").unwrap();
-        let expected = Node::Alternation(
-            Box::new(Node::Concatenation(
-                Box::new(Node::Character('l')),
-                Box::new(Node::Character('a')),
-            )),
-            Box::new(Node::Concatenation(
-                Box::new(Node::Character('l')),
-                Box::new(Node::Character('e')),
-            )),
+        let expected = Node::alternation(
+            Node::concatenation(Node::Character('l'), Node::Character('a')),
+            Node::concatenation(Node::Character('l'), Node::Character('e')),
         );
 
         assert_eq!(ast, expected);
@@ -225,12 +238,12 @@ mod tests {
     #[test]
     fn test_group_alternation() {
         let ast = parse_regex("l(a|e)").unwrap();
-        let expected = Node::Concatenation(
-            Box::new(Node::Character('l')),
-            Box::new(Node::Group(Box::new(Node::Alternation(
-                Box::new(Node::Character('a')),
-                Box::new(Node::Character('e')),
-            )))),
+        let expected = Node::concatenation(
+            Node::Character('l'),
+            Node::group(Node::alternation(
+                Node::Character('a'),
+                Node::Character('e'),
+            )),
         );
 
         assert_eq!(ast, expected);
@@ -239,26 +252,17 @@ mod tests {
     #[test]
     fn test_range_quantifier() {
         let ast = parse_regex("1{2,5}").unwrap();
-        let expected = Node::Range {
-            inner: Box::new(Node::Character('1')),
-            range: Range::new(2, Some(5)),
-        };
+        let expected = Node::range(Node::Character('1'), Range::new(2, Some(5)));
 
         assert_eq!(ast, expected);
 
         let ast = parse_regex("1{5}").unwrap();
-        let expected = Node::Range {
-            inner: Box::new(Node::Character('1')),
-            range: Range::new(5, Some(5)),
-        };
+        let expected = Node::range(Node::Character('1'), Range::new(5, Some(5)));
 
         assert_eq!(ast, expected);
 
         let ast = parse_regex("1{5,}").unwrap();
-        let expected = Node::Range {
-            inner: Box::new(Node::Character('1')),
-            range: Range::new(5, None),
-        };
+        let expected = Node::range(Node::Character('1'), Range::new(5, None));
 
         assert_eq!(ast, expected);
     }
@@ -266,27 +270,27 @@ mod tests {
     #[test]
     fn test_character_class() {
         let ast = parse_regex(r#"[bar\\]"#).unwrap();
-        let expected = Node::CharacterClass(Class {
-            negate: false,
-            members: vec![
+        let expected = Node::class(
+            false,
+            vec![
                 ClassMember::Atom('b'),
                 ClassMember::Atom('a'),
                 ClassMember::Atom('r'),
                 ClassMember::Atom('\\'),
             ],
-        });
+        );
 
         assert_eq!(ast, expected);
 
         let ast = parse_regex(r#"[^a-zA-Z.]"#).unwrap();
-        let expected = Node::CharacterClass(Class {
-            negate: true,
-            members: vec![
+        let expected = Node::class(
+            true,
+            vec![
                 ClassMember::Range('a', 'z'),
                 ClassMember::Range('A', 'Z'),
                 ClassMember::Atom('.'),
             ],
-        });
+        );
 
         assert_eq!(ast, expected);
     }

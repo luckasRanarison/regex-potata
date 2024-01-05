@@ -1,4 +1,4 @@
-use crate::ast::{Class, ClassMember, Node, Range};
+use crate::ast::{CharacterClass, ClassMember, Node, Range};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     fmt::{self, Debug},
@@ -14,7 +14,7 @@ enum TransitionKind {
     Character(char),
     Epsilon,
     Wildcard,
-    CharacterClass(Class),
+    CharacterClass(CharacterClass),
 }
 
 impl fmt::Display for TransitionKind {
@@ -159,7 +159,7 @@ impl Nfa {
         }
     }
 
-    fn class(class: Class) -> Self {
+    fn class(class: CharacterClass) -> Self {
         NfaBuilder::default()
             .transition(START, TransitionKind::CharacterClass(class), 1)
             .build()
