@@ -6,7 +6,7 @@ use std::{
 
 pub const START: usize = 0;
 
-type StateId = usize;
+pub type StateId = usize;
 type TransitionMap = BTreeMap<usize, Vec<Transition>>;
 
 #[derive(Clone, PartialEq)]
@@ -209,7 +209,7 @@ impl From<Node> for Nfa {
             Node::Empty => Nfa::epsilon(),
             Node::Character(ch) => Nfa::character(ch),
             Node::Wildcard => Nfa::wildcard(),
-            Node::Group(node) => Nfa::from(*node),
+            Node::Group(node) => Nfa::from(*node.inner),
             Node::Plus(node) => Nfa::from(*node).one_or_more(),
             Node::Star(node) => Nfa::from(*node).zero_or_more(),
             Node::Optional(node) => Nfa::from(*node).zero_or_one(),

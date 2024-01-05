@@ -18,6 +18,8 @@ pub enum ParsingError {
     InvalidRangeQuantifier,
     #[error("Invalid character class")]
     InvalidCharacterClass,
+    #[error("Invalid capture name")]
+    InvalidCaptureName,
     #[error("Range out of order")]
     RangeOutOfOrder,
 }

@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    nfa::{Nfa, START},
+    nfa::{Nfa, StateId, START},
     parser::parse_regex,
 };
 use std::collections::HashSet;
@@ -10,7 +10,7 @@ pub struct Regex {
     nfa: Nfa,
 }
 
-impl Regex {
+impl<'a> Regex {
     pub fn new(pattern: &str) -> Result<Self, Error> {
         let ast = parse_regex(pattern)?;
         let nfa = Nfa::from(ast);
@@ -18,27 +18,65 @@ impl Regex {
         Ok(Self { nfa })
     }
 
-    pub fn test(&self, input: &str) -> bool {
-        let mut states = HashSet::new();
+    pub fn matches(&self, input: &'a str) -> Vec<Match<'a>> {
+        let mut result = Vec::new();
 
-        states.insert(START);
+        for (i, _) in input.char_indices() {
+            let mut end = None;
+            let mut states = HashSet::new();
 
-        for ch in input.chars() {
-            states = states
-                .iter()
-                .flat_map(|&s| self.nfa.epsilon_closure(s))
-                .flat_map(|state| self.nfa.next(state, ch))
-                .collect();
+            states.insert(START);
 
-            if states.is_empty() {
-                return false;
+            for (j, ch) in input[i..].char_indices() {
+                states = states
+                    .iter()
+                    .flat_map(|&s| self.nfa.epsilon_closure(s))
+                    .flat_map(|state| self.nfa.next(state, ch))
+                    .collect();
+
+                if self.has_accepting_state(&states) {
+                    end = Some(i + j)
+                }
+
+                if states.is_empty() {
+                    break;
+                }
+            }
+
+            if let Some(end) = end {
+                result.push(Match::new(i, end, &input[i..=end]))
             }
         }
 
+        result
+    }
+
+    pub fn test(&self, input: &str) -> bool {
+        !self.matches(input).is_empty()
+    }
+
+    fn has_accepting_state(&self, states: &HashSet<StateId>) -> bool {
         states
             .iter()
             .flat_map(|&s| self.nfa.epsilon_closure(s))
             .any(|s| self.nfa.is_accepting(s))
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Match<'a> {
+    pub start: usize,
+    pub end: usize,
+    pub string: &'a str,
+}
+
+impl<'a> Match<'a> {
+    fn new(start: usize, end: usize, string: &'a str) -> Self {
+        Self { start, end, string }
+    }
+
+    pub fn to_string(&self) -> String {
+        self.string.to_string()
     }
 }
 
@@ -65,8 +103,6 @@ mod test {
         assert!(re.test("eh"));
         assert!(re.test("ehh"));
         assert!(re.test("ehhh"));
-        assert!(!re.test("ehs"));
-        assert!(!re.test("ehss"));
     }
 
     #[test]
@@ -83,8 +119,8 @@ mod test {
         let re = Regex::new("e{3}").unwrap();
 
         assert!(re.test("eee"));
+        assert!(!re.test("e"));
         assert!(!re.test("ee"));
-        assert!(!re.test("eeee"));
 
         let re = Regex::new("e{1,3}").unwrap();
 
@@ -92,7 +128,6 @@ mod test {
         assert!(re.test("ee"));
         assert!(re.test("eee"));
         assert!(!re.test(""));
-        assert!(!re.test("eeee"));
 
         let re = Regex::new("e{3,}").unwrap();
 

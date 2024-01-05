@@ -19,6 +19,7 @@ fn main() {
 
 - [x] Basic regex `foo` `(bar)` `|` `.`
 - [x] Quantifiers `+` `?` `*` `{x}` `{x,y}` `{x,}`
-- [x] Character classes `[a-z]` `[^x]`
-- [ ] Captures
+- [x] Character classes `[a-z]` `[^x]` `\d` `\D` `\w` `\W` `\s` `\S`
+- [ ] Anchors `^` `$`
+- [ ] Captures `(foo)` `(:?bar)` `(?<named>foo)`
 - [ ] NFA visualizer
