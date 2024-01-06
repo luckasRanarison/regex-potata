@@ -9,7 +9,7 @@ pub enum Node {
     Plus(Box<Node>),
     Optional(Box<Node>),
     Range { inner: Box<Node>, range: Range },
-    Group(Box<Node>),
+    Group(Group),
     Wildcard,
     Character(char),
     CharacterClass(CharacterClass),
@@ -43,12 +43,29 @@ impl Node {
         }
     }
 
-    pub fn group(inner: Node) -> Self {
-        Self::Group(Box::new(inner))
+    pub fn group(inner: Node, is_capturing: bool, name: Option<&str>) -> Self {
+        Self::Group(Group::new(inner, is_capturing, name.map(str::to_string)))
     }
 
     pub fn class(negate: bool, members: Vec<ClassMember>) -> Self {
         Self::CharacterClass(CharacterClass { negate, members })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Group {
+    pub inner: Box<Node>,
+    pub name: Option<String>,
+    pub is_capturing: bool,
+}
+
+impl Group {
+    fn new(inner: Node, is_capturing: bool, name: Option<String>) -> Self {
+        Self {
+            inner: Box::new(inner),
+            name,
+            is_capturing,
+        }
     }
 }
 

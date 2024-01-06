@@ -65,6 +65,7 @@ fn parser_atom(input: &str) -> Result<(Node, &str)> {
             '[' => parse_class(&input[1..]),
             '\\' => parse_metachar(&input[1..]),
             '.' => Ok((Node::Wildcard, &input[1..])),
+            ')' => Ok((Node::Empty, input)),
             _ => Ok((Node::Character(c), &input[c.len_utf8()..])),
         },
         None => Ok((Node::Empty, input)),
@@ -98,18 +99,19 @@ fn parse_class_members_inner(
     input: &str,
     acc: Vec<ClassMember>,
 ) -> Result<(Vec<ClassMember>, &str)> {
-    match parse_char(input)? {
-        (']', false, rest) => Ok((acc, rest)),
-        (ch, _, rest) => {
-            let (rest, tail) = if rest.starts_with("-") {
-                let (upper, _, rest) = parse_char(&rest[1..])?;
-                (rest, vec![ClassMember::Range(ch, upper)])
-            } else {
-                (rest, vec![ClassMember::Atom(ch)])
-            };
+    let (ch, is_escaped, rest) = parse_char(input)?;
 
-            parse_class_members_inner(rest, vec![acc, tail].concat())
-        }
+    if ch == ']' && !is_escaped {
+        return Ok((acc, rest));
+    }
+
+    if let Some(rest) = rest.strip_prefix('-') {
+        let (upper, _, rest) = parse_char(rest)?;
+        let acc = vec![acc, vec![ClassMember::Range(ch, upper)]].concat();
+        parse_class_members_inner(rest, acc)
+    } else {
+        let acc = vec![acc, vec![ClassMember::Atom(ch)]].concat();
+        parse_class_members_inner(rest, acc)
     }
 }
 
@@ -126,28 +128,57 @@ fn parse_char(input: &str) -> Result<(char, bool, &str)> {
     }
 }
 
+fn parse_group(input: &str) -> Result<(Node, &str)> {
+    let (is_capturing, name, rest) = match input.get(..2) {
+        Some(":?") => (false, None, &input[2..]),
+        Some("?<") => {
+            let (name, rest) = take_alphabetic(&input[2..]);
+
+            if name.is_empty() || !rest.starts_with('>') {
+                return Err(ParsingError::InvalidCaptureName);
+            }
+
+            (true, Some(name), &rest[1..])
+        }
+        _ => (true, None, input),
+    };
+
+    parse_alternation(rest).and_then(|(result, rest)| match rest.get(..1) {
+        Some(")") => Ok((Node::group(result, is_capturing, name), &rest[1..])),
+        _ => Err(ParsingError::MissingCharacter(')')),
+    })
+}
+
+fn take_while<'a, P>(predicate: P) -> impl Fn(&'a str) -> (&'a str, &'a str) + 'a
+where
+    P: Fn(char) -> bool + 'a,
+{
+    move |input: &'a str| {
+        let index = input
+            .char_indices()
+            .find_map(|(i, c)| (!predicate(c)).then_some(i))
+            .unwrap_or(input.len());
+
+        (&input[..index], &input[index..])
+    }
+}
+
+fn take_number(input: &str) -> Result<(Option<usize>, &str)> {
+    let (number, rest) = take_while(|ch| ch.is_ascii_digit())(input);
+    let number = number.parse::<usize>().ok();
+
+    Ok((number, rest))
+}
+
+fn take_alphabetic(input: &str) -> (&str, &str) {
+    take_while(|ch| ch.is_alphabetic())(input)
+}
+
 fn take_char(input: &str) -> (Option<char>, &str) {
     match input.chars().next() {
         Some(c) => (Some(c), &input[c.len_utf8()..]),
         None => (None, input),
     }
-}
-
-fn parse_group(input: &str) -> Result<(Node, &str)> {
-    parse_alternation(input).and_then(|(result, rest)| match rest.get(..1) {
-        Some(")") => Ok((Node::group(result), &rest[1..])),
-        _ => Err(ParsingError::MissingCharacter(')')),
-    })
-}
-
-fn take_number(input: &str) -> Result<(Option<usize>, &str)> {
-    let index = input
-        .char_indices()
-        .find_map(|(i, c)| (!c.is_ascii_digit()).then_some(i))
-        .unwrap_or(input.len());
-    let number = input[..index].parse::<usize>().ok();
-
-    Ok((number, &input[index..]))
 }
 
 fn needs_escape(ch: char) -> bool {
@@ -240,10 +271,11 @@ mod tests {
         let ast = parse_regex("l(a|e)").unwrap();
         let expected = Node::concatenation(
             Node::Character('l'),
-            Node::group(Node::alternation(
-                Node::Character('a'),
-                Node::Character('e'),
-            )),
+            Node::group(
+                Node::alternation(Node::Character('a'), Node::Character('e')),
+                true,
+                None,
+            ),
         );
 
         assert_eq!(ast, expected);
@@ -290,6 +322,63 @@ mod tests {
                 ClassMember::Range('A', 'Z'),
                 ClassMember::Atom('.'),
             ],
+        );
+
+        assert_eq!(ast, expected);
+    }
+
+    #[test]
+    fn test_capture_groups() {
+        let ast = parse_regex("(foo)bar").unwrap();
+        let expected = Node::concatenation(
+            Node::group(
+                Node::concatenation(
+                    Node::Character('f'),
+                    Node::concatenation(Node::Character('o'), Node::Character('o')),
+                ),
+                true,
+                None,
+            ),
+            Node::concatenation(
+                Node::Character('b'),
+                Node::concatenation(Node::Character('a'), Node::Character('r')),
+            ),
+        );
+
+        assert_eq!(ast, expected);
+
+        let ast = parse_regex("(:?foo)bar").unwrap();
+        let expected = Node::concatenation(
+            Node::group(
+                Node::concatenation(
+                    Node::Character('f'),
+                    Node::concatenation(Node::Character('o'), Node::Character('o')),
+                ),
+                false,
+                None,
+            ),
+            Node::concatenation(
+                Node::Character('b'),
+                Node::concatenation(Node::Character('a'), Node::Character('r')),
+            ),
+        );
+
+        assert_eq!(ast, expected);
+
+        let ast = parse_regex("(?<capt>foo)bar").unwrap();
+        let expected = Node::concatenation(
+            Node::group(
+                Node::concatenation(
+                    Node::Character('f'),
+                    Node::concatenation(Node::Character('o'), Node::Character('o')),
+                ),
+                true,
+                Some("capt"),
+            ),
+            Node::concatenation(
+                Node::Character('b'),
+                Node::concatenation(Node::Character('a'), Node::Character('r')),
+            ),
         );
 
         assert_eq!(ast, expected);
