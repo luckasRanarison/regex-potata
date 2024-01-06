@@ -4,31 +4,23 @@ use crate::{
     parser::parse_regex,
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt,
 };
 
-const FULL_CAPTURE_START: Option<usize> = Some(0);
-
-type Captures = HashMap<usize, Vec<CaptureGroup>>;
+type Captures = HashMap<usize, Vec<CaptureKind>>;
 
 #[derive(Debug)]
 pub struct Regex {
     nfa: Nfa,
     start_capture: Captures,
     end_capture: Captures,
-    capture_count: usize,
 }
 
 impl<'a> Regex {
     pub fn new(pattern: &str) -> Result<Self, Error> {
         let ast = parse_regex(pattern)?;
         let nfa = Nfa::from(ast);
-        let capture_count = nfa
-            .capture_groups()
-            .iter()
-            .filter(|c| c.name.is_none())
-            .count();
         let mut start_capture: Captures = HashMap::new();
         let mut end_capture: Captures = HashMap::new();
 
@@ -36,26 +28,36 @@ impl<'a> Regex {
             start_capture
                 .entry(group.start)
                 .or_default()
-                .push(CaptureGroup::new(index, group.name.clone()));
+                .push(CaptureKind::Indexed(index));
             end_capture
                 .entry(group.end)
                 .or_default()
-                .push(CaptureGroup::new(index, group.name.clone()));
+                .push(CaptureKind::Indexed(index));
+        }
+
+        for (name, group) in nfa.named_capture_groups() {
+            start_capture
+                .entry(group.start)
+                .or_default()
+                .push(CaptureKind::Named(name.to_string()));
+            end_capture
+                .entry(group.end)
+                .or_default()
+                .push(CaptureKind::Named(name.to_string()));
         }
 
         Ok(Self {
             nfa,
             start_capture,
             end_capture,
-            capture_count,
         })
     }
 
     pub fn captures(&self, input: &'a str) -> Option<Capture<'a>> {
-        let mut captures = vec![(None, None); self.capture_count];
-        let mut named_captures = HashMap::new(); // TODO
-        let mut end = None;
+        let mut captures = HashMap::new();
+        let mut named_captures = HashMap::new();
         let mut states = HashSet::new();
+        let mut end = None;
 
         states.insert(INITAL_STATE);
 
@@ -92,25 +94,36 @@ impl<'a> Regex {
             end = Some(input.len());
         }
 
-        captures.insert(0, (FULL_CAPTURE_START, end));
-
-        let groups = captures
-            .into_iter()
-            .flat_map(|(start, end)| start.and_then(|s| end.map(|e| (s, e))))
-            .map(|(start, end)| Match::new(start, end, &input[start..end]))
-            .collect::<Vec<_>>();
-
-        if !groups.is_empty() {
-            Some(Capture {
-                groups,
-                named_groups: HashMap::new(),
-            })
-        } else {
-            None
+        if end.is_none() {
+            return None;
         }
+
+        captures.insert(0, (Some(0), end)); // full match
+
+        let captures = captures
+            .into_iter()
+            .flat_map(|(index, (start, end))| {
+                start
+                    .zip(end)
+                    .map(|(start, end)| (index, Match::new(start, end, &input[start..end])))
+            })
+            .collect();
+        let named_captures = named_captures
+            .into_iter()
+            .flat_map(|(name, (start, end))| {
+                start
+                    .zip(end)
+                    .map(|(start, end)| (name, Match::new(start, end, &input[start..end])))
+            })
+            .collect();
+
+        Some(Capture {
+            captures,
+            named_captures,
+        })
     }
 
-    pub fn matches(&self, input: &'a str) -> Vec<Match<'a>> {
+    pub fn find(&self, input: &'a str) -> Vec<Match<'a>> {
         let mut result = Vec::new();
 
         for (i, _) in input.char_indices() {
@@ -145,7 +158,7 @@ impl<'a> Regex {
     }
 
     pub fn test(&self, input: &str) -> bool {
-        !self.matches(input).is_empty()
+        !self.find(input).is_empty()
     }
 
     fn has_accepting_state(&self, states: &HashSet<StateId>) -> bool {
@@ -154,20 +167,54 @@ impl<'a> Regex {
 
     fn update_captures(
         &self,
-        captures: &mut Vec<(Option<usize>, Option<usize>)>,
+        captures: &mut HashMap<usize, (Option<usize>, Option<usize>)>,
         named_captures: &mut HashMap<String, (Option<usize>, Option<usize>)>,
         states: &HashSet<StateId>,
-        index: usize,
+        position: usize,
     ) {
         for state in states {
-            if let Some(groups) = self.start_capture.get(&state) {
-                for group in groups {
-                    captures[group.index].0 = Some(index);
+            if let Some(groups) = self.start_capture.get(state) {
+                self.update_capture_starts(captures, named_captures, groups, position);
+            }
+            if let Some(groups) = self.end_capture.get(state) {
+                self.update_capture_ends(captures, named_captures, groups, position);
+            }
+        }
+    }
+
+    fn update_capture_starts(
+        &self,
+        captures: &mut HashMap<usize, (Option<usize>, Option<usize>)>,
+        named_captures: &mut HashMap<String, (Option<usize>, Option<usize>)>,
+        groups: &[CaptureKind],
+        position: usize,
+    ) {
+        for group in groups {
+            match group {
+                CaptureKind::Indexed(index) => {
+                    captures.entry(*index + 1).or_default().0 = Some(position)
+                }
+                CaptureKind::Named(name) => {
+                    named_captures.entry(name.to_owned()).or_default().0 = Some(position)
                 }
             }
-            if let Some(groups) = self.end_capture.get(&state) {
-                for group in groups {
-                    captures[group.index].1 = Some(index);
+        }
+    }
+
+    fn update_capture_ends(
+        &self,
+        captures: &mut HashMap<usize, (Option<usize>, Option<usize>)>,
+        named_captures: &mut HashMap<String, (Option<usize>, Option<usize>)>,
+        groups: &[CaptureKind],
+        position: usize,
+    ) {
+        for group in groups {
+            match group {
+                CaptureKind::Indexed(index) => {
+                    captures.entry(*index + 1).or_default().1 = Some(position)
+                }
+                CaptureKind::Named(name) => {
+                    named_captures.entry(name.to_owned()).or_default().1 = Some(position)
                 }
             }
         }
@@ -175,30 +222,73 @@ impl<'a> Regex {
 }
 
 #[derive(Debug)]
-struct CaptureGroup {
-    index: usize,
-    name: Option<String>,
+enum CaptureKind {
+    Indexed(usize),
+    Named(String),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Capture<'a> {
-    groups: Vec<Match<'a>>,
-    named_groups: HashMap<String, Match<'a>>,
+    captures: BTreeMap<usize, Match<'a>>,
+    named_captures: HashMap<String, Match<'a>>,
 }
 
 impl<'a> Capture<'a> {
     pub fn get(&self, index: usize) -> Option<&Match<'a>> {
-        self.groups.get(index)
+        self.captures.get(&index)
     }
 
     pub fn get_name(&self, name: &str) -> Option<&Match<'a>> {
-        self.named_groups.get(name)
+        self.named_captures.get(name)
+    }
+
+    pub fn iter(&'a self) -> CaptureIterator<'a> {
+        CaptureIterator::new(self)
     }
 }
 
-impl CaptureGroup {
-    fn new(index: usize, name: Option<String>) -> Self {
-        Self { index, name }
+pub struct CaptureIterator<'a> {
+    capture: &'a Capture<'a>,
+    current_index: usize,
+}
+
+impl<'a> CaptureIterator<'a> {
+    pub fn new(capture: &'a Capture<'a>) -> Self {
+        CaptureIterator {
+            capture,
+            current_index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for CaptureIterator<'a> {
+    type Item = &'a Match<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(match_item) = self.capture.get(self.current_index) {
+            self.current_index += 1;
+            Some(match_item)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a Capture<'a> {
+    type Item = &'a Match<'a>;
+    type IntoIter = CaptureIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        CaptureIterator::new(self)
+    }
+}
+
+impl<'a> IntoIterator for Capture<'a> {
+    type Item = Match<'a>;
+    type IntoIter = Box<dyn Iterator<Item = Self::Item> + 'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Box::new(self.captures.into_values())
     }
 }
 
@@ -223,7 +313,7 @@ impl<'a> Match<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::regex::Regex;
+    use crate::regex::{Match, Regex};
 
     #[test]
     fn test_simple_match() {
@@ -299,5 +389,25 @@ mod test {
         assert!(re.test("10"));
         assert!(re.test("12.50"));
         assert!(!re.test(""));
+    }
+
+    #[test]
+    fn test_capture_groups() {
+        let regex = Regex::new(r#"(ah+)(:?eh+)(oh+)"#).unwrap();
+        let matches = regex.captures("ahhhhehhhohhh").unwrap();
+
+        assert_eq!(matches.get(0), Some(&Match::new(0, 13, "ahhhhehhhohhh")));
+        assert_eq!(matches.get(1), Some(&Match::new(0, 5, "ahhhh")));
+        assert_eq!(matches.get(2), Some(&Match::new(9, 13, "ohhh")));
+    }
+
+    #[test]
+    fn test_named_capture_groups() {
+        let regex = Regex::new(r#"(?<hour>\d+):(?<minute>\d+)"#).unwrap();
+        let matches = regex.captures("19:30").unwrap();
+
+        assert_eq!(matches.get(0), Some(&Match::new(0, 5, "19:30")));
+        assert_eq!(matches.get_name("hour"), Some(&Match::new(0, 2, "19")));
+        assert_eq!(matches.get_name("minute"), Some(&Match::new(3, 5, "30")));
     }
 }

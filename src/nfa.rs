@@ -1,6 +1,6 @@
 use crate::ast::{CharacterClass, ClassMember, Group, Node, Range};
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     fmt::{self, Debug},
 };
 
@@ -64,7 +64,6 @@ impl Transition {
 pub struct CaptureGroup {
     pub start: StateId,
     pub end: StateId,
-    pub name: Option<String>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -72,6 +71,7 @@ pub struct Nfa {
     state_count: usize,
     transitions: TransitionMap,
     capture_groups: Vec<CaptureGroup>,
+    named_capture_groups: HashMap<String, CaptureGroup>,
 }
 
 impl Nfa {
@@ -171,10 +171,10 @@ impl Nfa {
         let nfa = Nfa::from(*group.inner);
         let end = nfa.end();
 
-        if group.is_capturing {
-            NfaBuilder::from(nfa).group(START, end, group.name).build()
-        } else {
-            nfa
+        match group.name {
+            Some(name) => NfaBuilder::from(nfa).named_group(START, end, name).build(),
+            None if group.is_capturing => NfaBuilder::from(nfa).group(START, end).build(),
+            None => nfa,
         }
     }
 
@@ -224,6 +224,10 @@ impl Nfa {
     pub fn capture_groups(&self) -> &Vec<CaptureGroup> {
         &self.capture_groups
     }
+
+    pub fn named_capture_groups(&self) -> &HashMap<String, CaptureGroup> {
+        &self.named_capture_groups
+    }
 }
 
 impl From<Node> for Nfa {
@@ -265,6 +269,7 @@ pub struct NfaBuilder {
     state_count: usize,
     transitions: TransitionMap,
     capture_groups: Vec<CaptureGroup>,
+    named_capture_groups: HashMap<String, CaptureGroup>,
 }
 
 impl NfaBuilder {
@@ -298,15 +303,30 @@ impl NfaBuilder {
             self.capture_groups.push(CaptureGroup {
                 start: group.start + offset,
                 end: group.end + offset,
-                name: group.name,
             });
+        }
+
+        for (name, group) in other.named_capture_groups {
+            self.named_capture_groups.insert(
+                name,
+                CaptureGroup {
+                    start: group.start + offset,
+                    end: group.end + offset,
+                },
+            );
         }
 
         self
     }
 
-    fn group(mut self, start: StateId, end: StateId, name: Option<String>) -> Self {
-        self.capture_groups.push(CaptureGroup { start, end, name });
+    fn group(mut self, start: StateId, end: StateId) -> Self {
+        self.capture_groups.push(CaptureGroup { start, end });
+        self
+    }
+
+    fn named_group(mut self, start: StateId, end: StateId, name: String) -> Self {
+        self.named_capture_groups
+            .insert(name, CaptureGroup { start, end });
         self
     }
 
@@ -315,6 +335,7 @@ impl NfaBuilder {
             state_count: self.state_count,
             transitions: self.transitions,
             capture_groups: self.capture_groups,
+            named_capture_groups: self.named_capture_groups,
         }
     }
 }
@@ -325,6 +346,7 @@ impl From<Nfa> for NfaBuilder {
             state_count: value.state_count,
             transitions: value.transitions,
             capture_groups: value.capture_groups,
+            named_capture_groups: value.named_capture_groups,
         }
     }
 }
