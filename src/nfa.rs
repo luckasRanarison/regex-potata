@@ -1,4 +1,4 @@
-use crate::ast::{CharacterClass, ClassMember, Node, Range};
+use crate::ast::{CharacterClass, ClassMember, Group, Node, Range};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     fmt::{self, Debug},
@@ -60,10 +60,18 @@ impl Transition {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CaptureGroup {
+    pub start: StateId,
+    pub end: StateId,
+    pub name: Option<String>,
+}
+
 #[derive(Clone, PartialEq)]
 pub struct Nfa {
     state_count: usize,
     transitions: TransitionMap,
+    capture_groups: Vec<CaptureGroup>,
 }
 
 impl Nfa {
@@ -93,7 +101,7 @@ impl Nfa {
         let offset = self.state_count;
 
         NfaBuilder::from(self)
-            .extend(other.transitions, offset)
+            .extend(other, offset)
             .transition(offset - 1, TransitionKind::Epsilon, offset)
             .build()
     }
@@ -105,8 +113,8 @@ impl Nfa {
         NfaBuilder::default()
             .transition(START, TransitionKind::Epsilon, 1)
             .transition(START, TransitionKind::Epsilon, offset)
-            .extend(self.transitions, 1)
-            .extend(other.transitions, offset)
+            .extend(self, 1)
+            .extend(other, offset)
             .transition(offset - 1, TransitionKind::Epsilon, new_end)
             .transition(new_end - 1, TransitionKind::Epsilon, new_end)
             .build()
@@ -117,7 +125,7 @@ impl Nfa {
 
         NfaBuilder::default()
             .transition(START, TransitionKind::Epsilon, 1)
-            .extend(self.transitions, 1)
+            .extend(self, 1)
             .transition(offset, TransitionKind::Epsilon, 1)
             .transition(offset, TransitionKind::Epsilon, offset + 1)
             .build()
@@ -156,6 +164,17 @@ impl Nfa {
                 .transition(end, TransitionKind::Epsilon, end - clone.state_count)
                 .transition(end, TransitionKind::Epsilon, end + 1)
                 .build()
+        }
+    }
+
+    fn group(group: Group) -> Self {
+        let nfa = Nfa::from(*group.inner);
+        let end = nfa.end();
+
+        if group.is_capturing {
+            NfaBuilder::from(nfa).group(START, end, group.name).build()
+        } else {
+            nfa
         }
     }
 
@@ -201,6 +220,10 @@ impl Nfa {
     pub fn is_accepting(&self, state: StateId) -> bool {
         self.end() == state
     }
+
+    pub fn capture_groups(&self) -> &Vec<CaptureGroup> {
+        &self.capture_groups
+    }
 }
 
 impl From<Node> for Nfa {
@@ -209,7 +232,7 @@ impl From<Node> for Nfa {
             Node::Empty => Nfa::epsilon(),
             Node::Character(ch) => Nfa::character(ch),
             Node::Wildcard => Nfa::wildcard(),
-            Node::Group(node) => Nfa::from(*node.inner),
+            Node::Group(group) => Nfa::group(group),
             Node::Plus(node) => Nfa::from(*node).one_or_more(),
             Node::Star(node) => Nfa::from(*node).zero_or_more(),
             Node::Optional(node) => Nfa::from(*node).zero_or_one(),
@@ -224,6 +247,8 @@ impl From<Node> for Nfa {
 impl Debug for Nfa {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "State count: {:?}", self.state_count)?;
+        writeln!(f, "Groups: {:?}", self.capture_groups)?;
+        writeln!(f, "Transitions:")?;
 
         for (start, transitions) in &self.transitions {
             for transition in transitions {
@@ -239,6 +264,7 @@ impl Debug for Nfa {
 pub struct NfaBuilder {
     state_count: usize,
     transitions: TransitionMap,
+    capture_groups: Vec<CaptureGroup>,
 }
 
 impl NfaBuilder {
@@ -261,13 +287,26 @@ impl NfaBuilder {
         self
     }
 
-    fn extend(mut self, transitions: BTreeMap<usize, Vec<Transition>>, offset: usize) -> Self {
-        for (start, transitions) in transitions {
+    fn extend(mut self, other: Nfa, offset: usize) -> Self {
+        for (start, transitions) in other.transitions {
             for transition in transitions {
                 self.add_transition(start + offset, transition.kind, transition.end + offset);
             }
         }
 
+        for group in other.capture_groups {
+            self.capture_groups.push(CaptureGroup {
+                start: group.start + offset,
+                end: group.end + offset,
+                name: group.name,
+            });
+        }
+
+        self
+    }
+
+    fn group(mut self, start: StateId, end: StateId, name: Option<String>) -> Self {
+        self.capture_groups.push(CaptureGroup { start, end, name });
         self
     }
 
@@ -275,6 +314,7 @@ impl NfaBuilder {
         Nfa {
             state_count: self.state_count,
             transitions: self.transitions,
+            capture_groups: self.capture_groups,
         }
     }
 }
@@ -284,6 +324,7 @@ impl From<Nfa> for NfaBuilder {
         Self {
             state_count: value.state_count,
             transitions: value.transitions,
+            capture_groups: value.capture_groups,
         }
     }
 }

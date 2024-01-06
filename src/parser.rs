@@ -65,6 +65,7 @@ fn parser_atom(input: &str) -> Result<(Node, &str)> {
             '[' => parse_class(&input[1..]),
             '\\' => parse_metachar(&input[1..]),
             '.' => Ok((Node::Wildcard, &input[1..])),
+            ')' => Ok((Node::Empty, input)),
             _ => Ok((Node::Character(c), &input[c.len_utf8()..])),
         },
         None => Ok((Node::Empty, input)),
