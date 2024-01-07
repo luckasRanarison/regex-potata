@@ -123,7 +123,15 @@ impl<'a> Regex {
         })
     }
 
-    pub fn find(&self, input: &'a str) -> Vec<Match<'a>> {
+    pub fn find(&self, input: &'a str) -> Option<Match<'a>> {
+        self.matches(input, false).into_iter().next()
+    }
+
+    pub fn find_all(&self, input: &'a str) -> Vec<Match<'a>> {
+        self.matches(input, true)
+    }
+
+    fn matches(&self, input: &'a str, all: bool) -> Vec<Match<'a>> {
         let mut result = Vec::new();
 
         for (i, _) in input.char_indices() {
@@ -150,7 +158,13 @@ impl<'a> Regex {
             }
 
             if let Some(end) = end {
-                result.push(Match::new(i, end, &input[i..=end]))
+                let m = Match::new(i, end, &input[i..=end]);
+
+                if !all {
+                    return vec![m];
+                }
+
+                result.push(m);
             }
         }
 
@@ -158,7 +172,7 @@ impl<'a> Regex {
     }
 
     pub fn test(&self, input: &str) -> bool {
-        !self.find(input).is_empty()
+        self.find(input).is_some()
     }
 
     fn has_accepting_state(&self, states: &HashSet<StateId>) -> bool {

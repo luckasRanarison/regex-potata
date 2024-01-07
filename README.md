@@ -5,13 +5,25 @@ A basic regex engine, built as a practical application of automata theory, imple
 ## Usage
 
 ```rust
-use regex_potata::regex::Regex;
+use regex_potata::Regex;
 
 fn main() {
-  let re = Regex::new("Hello (W|w)orld!*").unwrap();
-  let result = re.test("Hello world!!!");
+    let re = Regex::new("hello (w|w)orld!*").unwrap();
+    let result = re.test("hello world!!!");
 
-  println!("{}", result); // true
+    println!("{}", result); // true
+
+    let re = Regex::new(r#"(?<day>\d{2})-(?<month>\d{2})-(?<year>\d{4})"#).unwrap();
+    let captures = re.captures("07-01-2024").unwrap();
+
+    println!("{:?}", captures.get_name("day"));
+    println!("{:?}", captures.get_name("month"));
+    println!("{:?}", captures.get_name("year"));
+
+    let re = Regex::new("(T|t)h(e|(e|o)se)").unwrap();
+    let matches = re.find_all("the These those The");
+
+    println!("{:?}", matches);
 }
 ```
 
