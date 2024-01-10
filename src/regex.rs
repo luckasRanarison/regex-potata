@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    nfa::{Nfa, StateId, START as INITAL_STATE},
+    nfa::{Nfa, StateId, TransitionMap, START as INITAL_STATE},
     parser::parse_regex,
 };
 use std::{
@@ -173,6 +173,10 @@ impl<'a> Regex {
 
     pub fn test(&self, input: &str) -> bool {
         self.find(input).is_some()
+    }
+
+    pub fn transitions(&self) -> &TransitionMap {
+        self.nfa.transitions()
     }
 
     fn has_accepting_state(&self, states: &HashSet<StateId>) -> bool {

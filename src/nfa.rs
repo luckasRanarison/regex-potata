@@ -7,10 +7,10 @@ use std::{
 pub const START: usize = 0;
 
 pub type StateId = usize;
-type TransitionMap = BTreeMap<usize, Vec<Transition>>;
+pub type TransitionMap = BTreeMap<usize, Vec<Transition>>;
 
 #[derive(Clone, PartialEq)]
-enum TransitionKind {
+pub enum TransitionKind {
     Character(char),
     Epsilon,
     Wildcard,
@@ -29,7 +29,7 @@ impl fmt::Display for TransitionKind {
 }
 
 #[derive(Clone, PartialEq)]
-struct Transition {
+pub struct Transition {
     kind: TransitionKind,
     end: StateId,
 }
@@ -227,6 +227,10 @@ impl Nfa {
 
     pub fn named_capture_groups(&self) -> &HashMap<String, CaptureGroup> {
         &self.named_capture_groups
+    }
+
+    pub fn transitions(&self) -> &TransitionMap {
+        &self.transitions
     }
 }
 
