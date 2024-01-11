@@ -1,51 +1,49 @@
 import ReactCodeMirror, {
   Decoration,
   Extension,
-  MatchDecorator,
+  RangeSetBuilder,
   ViewPlugin,
 } from "@uiw/react-codemirror";
 import { useEffect, useState } from "react";
+import { OwnedMatch } from "regex-potata";
 
-const TestInput = ({ pattern }: { pattern: string }) => {
-  const [testInput, setTestInput] = useState("");
+type InputProps = {
+  input: string;
+  matches: OwnedMatch[];
+  onInput: (value: string) => void;
+};
+
+const TestInput = ({ input, matches, onInput }: InputProps) => {
   const [highlightExtension, setHighlightExtension] = useState<Extension>();
 
   useEffect(() => {
-    if (!pattern) {
-      return;
-    }
-
     try {
       const decoration = Decoration.mark({
         class: "highlight-chunk",
         inclusiveStart: true,
         inclusiveEnd: false,
       });
-      const matchDecorator = new MatchDecorator({
-        regexp: new RegExp(pattern, "g"), // TODO: use potata
-        decoration,
-      });
+
+      const decorationBuilder = new RangeSetBuilder<Decoration>();
+
+      for (const match of matches) {
+        decorationBuilder.add(match.start, match.end, decoration);
+      }
 
       const plugin = ViewPlugin.define(
-        (view) => ({
-          decorations: matchDecorator.createDeco(view),
-          update(update) {
-            this.decorations = matchDecorator.updateDeco(
-              update,
-              this.decorations
-            );
-          },
+        () => ({
+          decorations: decorationBuilder.finish(),
         }),
-        { decorations: (v) => v.decorations }
+        { decorations: (plugin) => plugin.decorations }
       );
 
       setHighlightExtension(plugin.extension);
     } catch {}
-  }, [pattern]);
+  }, [matches]);
 
   return (
     <ReactCodeMirror
-      value={testInput}
+      value={input}
       height="200px"
       className="leading-10"
       basicSetup={{
@@ -54,7 +52,7 @@ const TestInput = ({ pattern }: { pattern: string }) => {
         highlightActiveLine: false,
       }}
       extensions={highlightExtension && [highlightExtension]}
-      onChange={(e) => setTestInput(e)}
+      onChange={(value) => onInput(value)}
     />
   );
 };

@@ -3,16 +3,18 @@ import { Viz, instance } from "@viz-js/viz";
 import Navbar from "./components/Navbar";
 import ExpressionsPopup from "./components/ExpressionsPopup";
 import { RiCloseCircleFill, RiQuestionFill } from "react-icons/ri";
-import { RegexEngine } from "regex-potata";
+import { OwnedMatch, RegexEngine } from "regex-potata";
 import { dotFromRegex } from "./utils/viz";
 import TestInput from "./components/TestInput";
 import Footer from "./components/Footer";
 
 const App = () => {
   const [regexInput, setRegexInput] = useState("");
+  const [testInput, setTestInput] = useState("");
   const [regexInstance, setRegexInstance] = useState<RegexEngine>();
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [svg, setSvg] = useState<SVGSVGElement>();
+  const [matches, setMatches] = useState<OwnedMatch[]>([]);
   const vizInstance = useRef<Viz>();
 
   useEffect(() => {
@@ -41,6 +43,12 @@ const App = () => {
       }
     }
   }, [regexInstance]);
+
+  useEffect(() => {
+    if (regexInstance) {
+      setMatches(regexInstance.findAll(testInput));
+    }
+  }, [testInput, regexInstance]);
 
   return (
     <div
@@ -80,7 +88,11 @@ const App = () => {
           </div>
           <div className="space-y-4">
             <div className="font-semibold">Test input</div>
-            <TestInput pattern={regexInput} />
+            <TestInput
+              input={testInput}
+              matches={matches}
+              onInput={(v) => setTestInput(v)}
+            />
           </div>
           <div className="space-y-10">
             <div className="font-semibold">NFA Visualizer</div>
