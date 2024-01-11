@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    nfa::{Nfa, StateId, TransitionMap, START as INITAL_STATE},
+    nfa::{Nfa, StateId, START as INITAL_STATE},
     parser::parse_regex,
 };
 use std::{
@@ -12,7 +12,7 @@ type Captures = HashMap<usize, Vec<CaptureKind>>;
 
 #[derive(Debug)]
 pub struct Regex {
-    nfa: Nfa,
+    pub(crate) nfa: Nfa,
     start_capture: Captures,
     end_capture: Captures,
 }
@@ -24,7 +24,7 @@ impl<'a> Regex {
         let mut start_capture: Captures = HashMap::new();
         let mut end_capture: Captures = HashMap::new();
 
-        for (index, group) in nfa.capture_groups().iter().enumerate() {
+        for (index, group) in nfa.capture_groups.iter().enumerate() {
             start_capture
                 .entry(group.start)
                 .or_default()
@@ -35,7 +35,7 @@ impl<'a> Regex {
                 .push(CaptureKind::Indexed(index));
         }
 
-        for (name, group) in nfa.named_capture_groups() {
+        for (name, group) in nfa.named_capture_groups.iter() {
             start_capture
                 .entry(group.start)
                 .or_default()
@@ -175,10 +175,6 @@ impl<'a> Regex {
         self.find(input).is_some()
     }
 
-    pub fn transitions(&self) -> &TransitionMap {
-        self.nfa.transitions()
-    }
-
     fn has_accepting_state(&self, states: &HashSet<StateId>) -> bool {
         states.iter().any(|s| self.nfa.is_accepting(*s))
     }
@@ -247,8 +243,8 @@ enum CaptureKind {
 
 #[derive(Debug, PartialEq)]
 pub struct Capture<'a> {
-    captures: BTreeMap<usize, Match<'a>>,
-    named_captures: HashMap<String, Match<'a>>,
+    pub(crate) captures: BTreeMap<usize, Match<'a>>,
+    pub(crate) named_captures: HashMap<String, Match<'a>>,
 }
 
 impl<'a> Capture<'a> {

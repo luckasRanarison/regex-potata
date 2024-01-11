@@ -30,8 +30,8 @@ impl fmt::Display for TransitionKind {
 
 #[derive(Clone, PartialEq)]
 pub struct Transition {
-    kind: TransitionKind,
-    end: StateId,
+    pub(crate) kind: TransitionKind,
+    pub(crate) end: StateId,
 }
 
 impl Transition {
@@ -68,10 +68,10 @@ pub struct CaptureGroup {
 
 #[derive(Clone, PartialEq)]
 pub struct Nfa {
-    state_count: usize,
-    transitions: TransitionMap,
-    capture_groups: Vec<CaptureGroup>,
-    named_capture_groups: HashMap<String, CaptureGroup>,
+    pub(crate) state_count: usize,
+    pub(crate) transitions: TransitionMap,
+    pub(crate) capture_groups: Vec<CaptureGroup>,
+    pub(crate) named_capture_groups: HashMap<String, CaptureGroup>,
 }
 
 impl Nfa {
@@ -219,18 +219,6 @@ impl Nfa {
 
     pub fn is_accepting(&self, state: StateId) -> bool {
         self.end() == state
-    }
-
-    pub fn capture_groups(&self) -> &Vec<CaptureGroup> {
-        &self.capture_groups
-    }
-
-    pub fn named_capture_groups(&self) -> &HashMap<String, CaptureGroup> {
-        &self.named_capture_groups
-    }
-
-    pub fn transitions(&self) -> &TransitionMap {
-        &self.transitions
     }
 }
 
