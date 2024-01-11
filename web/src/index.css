@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.cm-editor {
+  @apply border-[1px] border-slate-800 rounded-md p-4 !bg-transparent !outline-none !leading-10;
+}
+
+.cm-cursor {
+  @apply !border-white;
+}
+
+.cm-selectionBackground {
+  @apply !bg-[#00000060];
+}
+
+@layer utilities {
+  .highlight-chunk {
+    @apply bg-cyan-200 text-slate-900;
+  }
+}

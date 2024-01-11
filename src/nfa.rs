@@ -20,9 +20,12 @@ pub enum TransitionKind {
 impl fmt::Display for TransitionKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TransitionKind::Character(ch) => write!(f, "{ch}"),
             TransitionKind::Epsilon => write!(f, "ε"),
-            TransitionKind::Wildcard => write!(f, "."),
+            TransitionKind::Wildcard => write!(f, "wildcard"),
+            TransitionKind::Character(ch) => match ch.is_whitespace() {
+                true => write!(f, "whitespace"),
+                false => write!(f, "{ch}"),
+            },
             TransitionKind::CharacterClass(class) => write!(f, "{class}"),
         }
     }
