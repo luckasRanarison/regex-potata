@@ -6,6 +6,7 @@ import { RiCloseCircleFill, RiQuestionFill } from "react-icons/ri";
 import { RegexEngine } from "regex-potata";
 import { dotFromRegex } from "./utils/viz";
 import TestInput from "./components/TestInput";
+import Footer from "./components/Footer";
 
 const App = () => {
   const [regexInput, setRegexInput] = useState("");
@@ -15,7 +16,11 @@ const App = () => {
   const vizInstance = useRef<Viz>();
 
   useEffect(() => {
-    instance().then((i) => (vizInstance.current = i));
+    (async () => {
+      const i = await instance();
+      vizInstance.current = i;
+      setRegexInstance(new RegexEngine(""));
+    })();
   }, []);
 
   useEffect(() => {
@@ -89,6 +94,7 @@ const App = () => {
           </div>
         </div>
       </div>
+      <Footer />
       <ExpressionsPopup
         open={isPopupOpen}
         onClose={() => setIsPopupOpen(false)}

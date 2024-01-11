@@ -28,7 +28,7 @@ const ExpressionsPopup = ({ open, onClose }: PopupProps) => {
   return (
     <Dialog initialFocus={popupRef} open={open} onClose={onClose}>
       <div
-        className="fixed inset-0 p-4
+        className="z-50 fixed inset-0 p-4
         flex w-screen items-center justify-center
         backdrop-blur-sm bg-[#00000080]"
       >

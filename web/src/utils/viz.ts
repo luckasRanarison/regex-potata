@@ -16,7 +16,7 @@ function dotFromRegex(regex: RegexEngine) {
       graph [rankdir=LR]; 
       node [shape=circle, color=white, penwidth=2, fontcolor=white, fontname="Arial"];
       edge [color="#67e8f9", fontcolor=white, fontname="Arial"];
-      ${endState} [shape=doublecircle];
+      ${endState} [shape=doublecircle, color="#67e8f9"];
       "" [shape=none]
       "" -> 0
       ${transitions}

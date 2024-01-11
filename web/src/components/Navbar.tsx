@@ -2,9 +2,9 @@ import { RiGithubFill } from "react-icons/ri";
 
 const Navbar = () => (
   <div
-    className="py-4 px-6 2xl:px-10 w-full 
+    className="z-40 sticky top-0 py-4 px-6 2xl:px-10 w-full 
     flex justify-between items-center
-    border-b-[1px] border-slate-800"
+    border-b-[1px] border-slate-800 bg-slate-900"
   >
     <div className="font-semibold text-2xl">
       <span>Regex </span>

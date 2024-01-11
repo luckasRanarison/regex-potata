@@ -1,11 +1,25 @@
 {
-  "name": "web",
-  "private": true,
-  "version": "0.0.0",
+  "name": "regex-potata-web",
+  "version": "0.1.0",
+  "author": {
+    "name": "LIOKA Ranarison Fidearna",
+    "email": "luckasranarison@gmail.com"
+  },
+  "keywords": [
+    "regex",
+    "wasm"
+  ],
+  "license": "MIT",
+  "readme": "../README.md",
+  "repository": {
+    "url": "https://github.com/luckasRanarison/regex-potata",
+    "type": "git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc && vite build",
+    "wasm": "wasm-pack build --features='wasm' --out-dir web/pkg",
+    "build": "npm run wasm && tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview --host"
   },
