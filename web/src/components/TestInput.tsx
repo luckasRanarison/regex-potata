@@ -5,11 +5,11 @@ import ReactCodeMirror, {
   ViewPlugin,
 } from "@uiw/react-codemirror";
 import { useEffect, useState } from "react";
-import { OwnedMatch } from "regex-potata";
+import { RegexMatch } from "regex-potata";
 
 type InputProps = {
   input: string;
-  matches: OwnedMatch[];
+  matches: RegexMatch[];
   onInput: (value: string) => void;
 };
 
