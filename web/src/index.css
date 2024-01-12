@@ -21,3 +21,7 @@
 .cm-selectionBackground {
   @apply !bg-[#00000060];
 }
+
+.cm-tooltip {
+  @apply !bg-transparent !border-none;
+}

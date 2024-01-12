@@ -1,5 +1,10 @@
-import { Decoration, RangeSetBuilder, ViewPlugin } from "@uiw/react-codemirror";
-import { RegexMatch } from "regex-potata";
+import {
+  Decoration,
+  RangeSetBuilder,
+  ViewPlugin,
+  hoverTooltip,
+} from "@uiw/react-codemirror";
+import { RegexCapture, RegexMatch } from "regex-potata";
 
 const matchDecoration = Decoration.mark({
   class: "bg-cyan-100 text-slate-900",
@@ -24,4 +29,28 @@ function getMatchHighlight(matches: RegexMatch[]) {
   return plugin.extension;
 }
 
-export { getMatchHighlight };
+function groupHoverTooltip(captures: RegexCapture[]) {
+  return hoverTooltip((_, pos) => {
+    for (const capture of captures.slice(1)) {
+      const { start, end } = capture;
+
+      if (start <= pos && pos <= end) {
+        return {
+          pos: start,
+          end,
+          above: true,
+          create() {
+            const dom = document.createElement("div");
+            dom.innerHTML = `Group <span class="font-semibold">${capture.name()}</span>`;
+            dom.classList.add("px-4", "rounded-md", "!bg-slate-600");
+            return { dom };
+          },
+        };
+      }
+    }
+
+    return null;
+  });
+}
+
+export { getMatchHighlight, groupHoverTooltip };

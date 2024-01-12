@@ -3,7 +3,7 @@ import { Viz, instance } from "@viz-js/viz";
 import Navbar from "./components/Navbar";
 import ExpressionsPopup from "./components/ExpressionsPopup";
 import { RiQuestionFill } from "react-icons/ri";
-import { RegexMatch, RegexEngine } from "regex-potata";
+import { RegexMatch, RegexEngine, RegexCapture } from "regex-potata";
 import { dotFromRegex } from "./utils/viz";
 import TestInput from "./components/TestInput";
 import Footer from "./components/Footer";
@@ -17,6 +17,7 @@ const App = () => {
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [svg, setSvg] = useState<SVGSVGElement>();
   const [matches, setMatches] = useState<RegexMatch[]>([]);
+  const [captures, setCaptures] = useState<RegexCapture[]>([]);
   const vizInstance = useRef<Viz>();
 
   useEffect(() => {
@@ -50,6 +51,7 @@ const App = () => {
   useEffect(() => {
     if (regexInstance) {
       setMatches(regexInstance.findAll(testInput));
+      setCaptures(regexInstance.captures(testInput));
     }
   }, [testInput, regexInstance]);
 
@@ -83,12 +85,16 @@ const App = () => {
             <TestInput
               input={testInput}
               matches={matches}
+              captures={captures}
               onInput={(v) => setTestInput(v)}
             />
           </div>
           <div className="space-y-10">
             <div className="font-semibold">NFA Visualizer</div>
-            <div className="w-full overflow-scroll">
+            <div
+              className="pt-12 pb-8 w-full overflow-scroll
+              rounded-md border-[1px] border-slate-800"
+            >
               {svg && (
                 <svg
                   height={svg?.height.baseVal.value}

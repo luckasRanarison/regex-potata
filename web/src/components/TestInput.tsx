@@ -1,26 +1,34 @@
 import ReactCodeMirror, { Extension } from "@uiw/react-codemirror";
 import { useEffect, useState } from "react";
-import { RegexMatch } from "regex-potata";
-import { getMatchHighlight } from "../utils/extensions";
+import { RegexCapture, RegexMatch } from "regex-potata";
+import { getMatchHighlight, groupHoverTooltip } from "../utils/extensions";
 
 type InputProps = {
   input: string;
   matches: RegexMatch[];
+  captures: RegexCapture[];
   onInput: (value: string) => void;
 };
 
-const TestInput = ({ input, matches, onInput }: InputProps) => {
+const TestInput = ({ input, matches, captures, onInput }: InputProps) => {
   const [highlightExtension, setHighlightExtension] = useState<Extension>();
+  const [hoverExtension, setHoverExtension] = useState<Extension>();
 
   useEffect(() => {
-    if (!matches.length) {
-      return setHighlightExtension(undefined);
+    if (matches.length) {
+      setHighlightExtension(getMatchHighlight(matches));
+    } else {
+      setHighlightExtension(undefined);
     }
-
-    const extension = getMatchHighlight(matches);
-
-    setHighlightExtension(extension);
   }, [matches]);
+
+  useEffect(() => {
+    if (captures.length) {
+      setHoverExtension(groupHoverTooltip(captures));
+    } else {
+      setHoverExtension(undefined);
+    }
+  }, [captures]);
 
   return (
     <ReactCodeMirror
@@ -32,7 +40,7 @@ const TestInput = ({ input, matches, onInput }: InputProps) => {
         foldGutter: false,
         highlightActiveLine: false,
       }}
-      extensions={highlightExtension && [highlightExtension]}
+      extensions={[hoverExtension!, highlightExtension!].filter((v) => v)}
       onChange={(value) => onInput(value)}
     />
   );
