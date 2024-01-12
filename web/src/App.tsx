@@ -3,11 +3,12 @@ import { Viz, instance } from "@viz-js/viz";
 import Navbar from "./components/Navbar";
 import ExpressionsPopup from "./components/ExpressionsPopup";
 import { RiQuestionFill } from "react-icons/ri";
-import { OwnedMatch, RegexEngine } from "regex-potata";
+import { RegexMatch, RegexEngine } from "regex-potata";
 import { dotFromRegex } from "./utils/viz";
 import TestInput from "./components/TestInput";
 import Footer from "./components/Footer";
 import RegexInput from "./components/RegexInput";
+import ToolTip from "./components/ToolTip";
 
 const App = () => {
   const [regexInput, setRegexInput] = useState("");
@@ -15,7 +16,7 @@ const App = () => {
   const [regexInstance, setRegexInstance] = useState<RegexEngine>();
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [svg, setSvg] = useState<SVGSVGElement>();
-  const [matches, setMatches] = useState<OwnedMatch[]>([]);
+  const [matches, setMatches] = useState<RegexMatch[]>([]);
   const vizInstance = useRef<Viz>();
 
   useEffect(() => {
@@ -67,9 +68,9 @@ const App = () => {
           <div className="space-y-4">
             <div className="space-x-3 flex items-center font-semibold">
               <div>Regular expression</div>
-              <button onClick={() => setIsPopupOpen(true)}>
+              <ToolTip label="Show help" onClick={() => setIsPopupOpen(true)}>
                 <RiQuestionFill />
-              </button>
+              </ToolTip>
             </div>
             <RegexInput
               value={regexInput}

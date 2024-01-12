@@ -1,23 +1,13 @@
-import ReactCodeMirror, {
-  Decoration,
-  Extension,
-  RangeSetBuilder,
-  ViewPlugin,
-} from "@uiw/react-codemirror";
+import ReactCodeMirror, { Extension } from "@uiw/react-codemirror";
 import { useEffect, useState } from "react";
 import { RegexMatch } from "regex-potata";
+import { getMatchHighlight } from "../utils/extensions";
 
 type InputProps = {
   input: string;
   matches: RegexMatch[];
   onInput: (value: string) => void;
 };
-
-const decoration = Decoration.mark({
-  class: "highlight-chunk",
-  inclusiveStart: true,
-  inclusiveEnd: false,
-});
 
 const TestInput = ({ input, matches, onInput }: InputProps) => {
   const [highlightExtension, setHighlightExtension] = useState<Extension>();
@@ -27,20 +17,9 @@ const TestInput = ({ input, matches, onInput }: InputProps) => {
       return setHighlightExtension(undefined);
     }
 
-    const decorationBuilder = new RangeSetBuilder<Decoration>();
+    const extension = getMatchHighlight(matches);
 
-    for (const match of matches) {
-      decorationBuilder.add(match.start, match.end, decoration);
-    }
-
-    const plugin = ViewPlugin.define(
-      () => ({
-        decorations: decorationBuilder.finish(),
-      }),
-      { decorations: (plugin) => plugin.decorations }
-    );
-
-    setHighlightExtension(plugin.extension);
+    setHighlightExtension(extension);
   }, [matches]);
 
   return (

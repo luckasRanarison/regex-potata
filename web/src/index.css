@@ -21,9 +21,3 @@
 .cm-selectionBackground {
   @apply !bg-[#00000060];
 }
-
-@layer utilities {
-  .highlight-chunk {
-    @apply bg-cyan-100 text-slate-900;
-  }
-}

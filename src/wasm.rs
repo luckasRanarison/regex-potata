@@ -3,7 +3,7 @@ use crate::{
     regex::{Capture, Regex},
     Match,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -20,20 +20,13 @@ impl RegexEngine {
         }
     }
 
-    pub fn captures(&self, input: &str) -> Option<RegexCapture> {
+    pub fn captures(&self, input: &str) -> Vec<RegexCapture> {
         let index_map = get_char_index(input);
 
         self.engine
             .captures(input)
             .map(|c| RegexCapture::from_capture(c, &index_map))
-    }
-
-    pub fn find(&self, input: &str) -> Option<RegexMatch> {
-        let index_map = get_char_index(input);
-
-        self.engine
-            .find(input)
-            .map(|m| RegexMatch::from_match(m, &index_map))
+            .unwrap_or_default()
     }
 
     #[wasm_bindgen(js_name = "findAll")]
@@ -45,10 +38,6 @@ impl RegexEngine {
             .into_iter()
             .map(|m| RegexMatch::from_match(m, &index_map))
             .collect()
-    }
-
-    pub fn test(&self, input: &str) -> bool {
-        self.engine.test(input)
     }
 
     #[wasm_bindgen(js_name = "nfaStates")]
@@ -89,48 +78,36 @@ impl RegexMatch {
 #[wasm_bindgen]
 #[derive(Debug, Clone)]
 pub struct RegexCapture {
-    captures: BTreeMap<usize, RegexMatch>,
-    named_captures: HashMap<String, RegexMatch>,
-}
-
-impl RegexCapture {
-    fn from_capture(value: Capture, index_map: &HashMap<usize, usize>) -> Self {
-        let captures = value
-            .captures
-            .into_iter()
-            .map(|(i, v)| (i, RegexMatch::from_match(v, index_map)))
-            .collect();
-        let named_captures = value
-            .named_captures
-            .into_iter()
-            .map(|(i, v)| (i, RegexMatch::from_match(v, index_map)))
-            .collect();
-
-        Self {
-            captures,
-            named_captures,
-        }
-    }
+    name: String,
+    pub start: usize,
+    pub end: usize,
 }
 
 #[wasm_bindgen]
 impl RegexCapture {
-    pub fn get(&self, index: usize) -> Option<RegexMatch> {
-        self.captures.get(&index).cloned()
+    pub fn name(&self) -> String {
+        self.name.clone()
     }
 
-    #[wasm_bindgen(js_name = "getName")]
-    pub fn get_name(&self, name: &str) -> Option<RegexMatch> {
-        self.named_captures.get(name).cloned()
+    fn new(name: String, start: usize, end: usize, index_map: &HashMap<usize, usize>) -> Self {
+        Self {
+            name,
+            start: index_map[&start],
+            end: index_map[&end],
+        }
     }
 
-    pub fn captures(&self) -> Vec<usize> {
-        self.captures.keys().cloned().collect()
-    }
+    fn from_capture(value: Capture, index_map: &HashMap<usize, usize>) -> Vec<Self> {
+        let captures = value
+            .captures
+            .into_iter()
+            .map(|(i, v)| RegexCapture::new(i.to_string(), v.start, v.end, index_map));
+        let named_captures = value
+            .named_captures
+            .into_iter()
+            .map(|(i, v)| RegexCapture::new(i, v.start, v.end, index_map));
 
-    #[wasm_bindgen(js_name = "namedCaptures")]
-    pub fn named_captures(&self) -> Vec<String> {
-        self.named_captures.keys().cloned().collect()
+        captures.chain(named_captures).collect()
     }
 }
 
