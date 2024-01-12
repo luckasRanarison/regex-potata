@@ -13,32 +13,34 @@ type InputProps = {
   onInput: (value: string) => void;
 };
 
+const decoration = Decoration.mark({
+  class: "highlight-chunk",
+  inclusiveStart: true,
+  inclusiveEnd: false,
+});
+
 const TestInput = ({ input, matches, onInput }: InputProps) => {
   const [highlightExtension, setHighlightExtension] = useState<Extension>();
 
   useEffect(() => {
-    try {
-      const decoration = Decoration.mark({
-        class: "highlight-chunk",
-        inclusiveStart: true,
-        inclusiveEnd: false,
-      });
+    if (!matches.length) {
+      return setHighlightExtension(undefined);
+    }
 
-      const decorationBuilder = new RangeSetBuilder<Decoration>();
+    const decorationBuilder = new RangeSetBuilder<Decoration>();
 
-      for (const match of matches) {
-        decorationBuilder.add(match.start, match.end, decoration);
-      }
+    for (const match of matches) {
+      decorationBuilder.add(match.start, match.end, decoration);
+    }
 
-      const plugin = ViewPlugin.define(
-        () => ({
-          decorations: decorationBuilder.finish(),
-        }),
-        { decorations: (plugin) => plugin.decorations }
-      );
+    const plugin = ViewPlugin.define(
+      () => ({
+        decorations: decorationBuilder.finish(),
+      }),
+      { decorations: (plugin) => plugin.decorations }
+    );
 
-      setHighlightExtension(plugin.extension);
-    } catch {}
+    setHighlightExtension(plugin.extension);
   }, [matches]);
 
   return (

@@ -3,7 +3,11 @@
 @tailwind utilities;
 
 .cm-editor {
-  @apply border-[1px] border-slate-800 rounded-md p-4 !bg-transparent;
+  @apply border-[1px] border-slate-800 rounded-md p-3 !bg-transparent;
+}
+
+.cm-content {
+  @apply !font-sans !leading-6;
 }
 
 .cm-focused {
@@ -20,6 +24,6 @@
 
 @layer utilities {
   .highlight-chunk {
-    @apply bg-cyan-200 text-slate-900;
+    @apply bg-cyan-100 text-slate-900;
   }
 }

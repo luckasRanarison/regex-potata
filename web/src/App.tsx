@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Viz, instance } from "@viz-js/viz";
 import Navbar from "./components/Navbar";
 import ExpressionsPopup from "./components/ExpressionsPopup";
-import { RiCloseCircleFill, RiQuestionFill } from "react-icons/ri";
+import { RiQuestionFill } from "react-icons/ri";
 import { OwnedMatch, RegexEngine } from "regex-potata";
 import { dotFromRegex } from "./utils/viz";
 import TestInput from "./components/TestInput";
 import Footer from "./components/Footer";
+import RegexInput from "./components/RegexInput";
 
 const App = () => {
   const [regexInput, setRegexInput] = useState("");
@@ -20,8 +21,9 @@ const App = () => {
   useEffect(() => {
     (async () => {
       const i = await instance();
+      const engine = new RegexEngine("");
       vizInstance.current = i;
-      setRegexInstance(new RegexEngine(""));
+      setRegexInstance(engine);
     })();
   }, []);
 
@@ -60,8 +62,7 @@ const App = () => {
       <div className="py-5 px-3 w-full flex justify-center">
         <div
           className="py-4 px-4 md:px-8 md:py-6 w-full max-w-2xl space-y-8
-          flex flex-col justify-center
-          rounded-md"
+          flex flex-col justify-center"
         >
           <div className="space-y-4">
             <div className="space-x-3 flex items-center font-semibold">
@@ -70,21 +71,11 @@ const App = () => {
                 <RiQuestionFill />
               </button>
             </div>
-            <input
+            <RegexInput
               value={regexInput}
-              placeholder="Insert a regular expression..."
-              onChange={(e) => setRegexInput(e.target.value)}
-              className={`py-3 px-5 w-full
-              rounded-md border-[1px] border-slate-800
-              bg-transparent focus:outline-none focus:border-cyan-300
-              ${!regexInstance && "!border-red-400"}`}
+              error={!regexInstance}
+              onInput={(v) => setRegexInput(v)}
             />
-            {!regexInstance && (
-              <div className="flex items-center space-x-3 font-semibold text-red-400">
-                <RiCloseCircleFill />
-                <span>Invalid Regular expression</span>
-              </div>
-            )}
           </div>
           <div className="space-y-4">
             <div className="font-semibold">Test input</div>
@@ -97,11 +88,13 @@ const App = () => {
           <div className="space-y-10">
             <div className="font-semibold">NFA Visualizer</div>
             <div className="w-full overflow-scroll">
-              <svg
-                height={svg?.height.baseVal.value}
-                width={svg?.width.baseVal.value}
-                dangerouslySetInnerHTML={{ __html: svg?.innerHTML ?? "" }}
-              ></svg>
+              {svg && (
+                <svg
+                  height={svg?.height.baseVal.value}
+                  width={svg?.width.baseVal.value}
+                  dangerouslySetInnerHTML={{ __html: svg.innerHTML }}
+                ></svg>
+              )}
             </div>
           </div>
         </div>

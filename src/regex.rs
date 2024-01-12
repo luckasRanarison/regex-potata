@@ -54,23 +54,29 @@ impl<'a> Regex {
     }
 
     pub fn captures(&self, input: &'a str) -> Option<Capture<'a>> {
+        let input_len = input.len();
+        let mut char_count = 0;
         let mut captures = HashMap::new();
         let mut named_captures = HashMap::new();
         let mut states = HashSet::new();
         let mut end = None;
+        let mut char_index_map = HashMap::new();
 
         states.insert(INITAL_STATE);
 
-        for (i, ch) in input.char_indices() {
+        for (idx, ch) in input.char_indices() {
+            char_index_map.insert(idx, char_count);
+            char_count += 1;
+
             states = states
                 .iter()
                 .flat_map(|&s| self.nfa.epsilon_closure(s))
                 .collect();
 
-            self.update_captures(&mut captures, &mut named_captures, &states, i);
+            self.update_captures(&mut captures, &mut named_captures, &states, idx);
 
             if self.has_accepting_state(&states) {
-                end = Some(i)
+                end = Some(idx)
             }
 
             states = states
@@ -83,15 +89,16 @@ impl<'a> Regex {
             }
         }
 
+        char_index_map.insert(input_len, char_count);
         states = states
             .iter()
             .flat_map(|&s| self.nfa.epsilon_closure(s))
             .collect();
 
-        self.update_captures(&mut captures, &mut named_captures, &states, input.len());
+        self.update_captures(&mut captures, &mut named_captures, &states, input_len);
 
         if self.has_accepting_state(&states) {
-            end = Some(input.len());
+            end = Some(input_len);
         }
 
         if end.is_none() {
@@ -149,7 +156,7 @@ impl<'a> Regex {
                     .collect();
 
                 if self.has_accepting_state(&states) {
-                    end = Some(i + j)
+                    end = Some(i + j + ch.len_utf8());
                 }
 
                 if states.is_empty() {
@@ -158,7 +165,7 @@ impl<'a> Regex {
             }
 
             if let Some(end) = end {
-                let m = Match::new(i, end, &input[i..=end]);
+                let m = Match::new(i, end, &input[i..end]);
 
                 if !all {
                     return vec![m];
@@ -423,5 +430,20 @@ mod test {
         assert_eq!(matches.get(0), Some(&Match::new(0, 5, "19:30")));
         assert_eq!(matches.get_name("hour"), Some(&Match::new(0, 2, "19")));
         assert_eq!(matches.get_name("minute"), Some(&Match::new(3, 5, "30")));
+    }
+
+    #[test]
+    fn test_find() {
+        let regex = Regex::new(r#"wh(at|o|y)"#).unwrap();
+        let matches = regex.find_all("what? who? why?");
+
+        assert_eq!(
+            matches,
+            vec![
+                Match::new(0, 4, "what"),
+                Match::new(6, 9, "who"),
+                Match::new(11, 14, "why")
+            ]
+        );
     }
 }

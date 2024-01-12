@@ -10,8 +10,8 @@ pub fn parse_regex(input: &str) -> Result<Node> {
 }
 
 fn parse_alternation(input: &str) -> Result<(Node, &str)> {
-    parse_concat(input).and_then(|(lhs, rest)| match rest.get(..1) {
-        Some("|") => {
+    parse_concat(input).and_then(|(lhs, rest)| match rest.chars().next() {
+        Some('|') => {
             parse_alternation(&rest[1..]).map(|(rhs, rest)| (Node::alternation(lhs, rhs), rest))
         }
         _ => Ok((lhs, rest)),
@@ -19,18 +19,18 @@ fn parse_alternation(input: &str) -> Result<(Node, &str)> {
 }
 
 fn parse_concat(input: &str) -> Result<(Node, &str)> {
-    parse_quantifier(input).and_then(|(lhs, rest)| match rest.get(..1) {
-        Some("|") | Some(")") | None => Ok((lhs, rest)),
+    parse_quantifier(input).and_then(|(lhs, rest)| match rest.chars().next() {
+        Some('|') | Some(')') | None => Ok((lhs, rest)),
         Some(_) => parse_concat(rest).map(|(rhs, rest)| (Node::concatenation(lhs, rhs), rest)),
     })
 }
 
 fn parse_quantifier(input: &str) -> Result<(Node, &str)> {
-    parser_atom(input).and_then(|(result, rest)| match rest.get(..1) {
-        Some("+") => Ok((Node::plus(result), &rest[1..])),
-        Some("*") => Ok((Node::star(result), &rest[1..])),
-        Some("?") => Ok((Node::optional(result), &rest[1..])),
-        Some("{") => {
+    parser_atom(input).and_then(|(result, rest)| match rest.chars().next() {
+        Some('+') => Ok((Node::plus(result), &rest[1..])),
+        Some('*') => Ok((Node::star(result), &rest[1..])),
+        Some('?') => Ok((Node::optional(result), &rest[1..])),
+        Some('{') => {
             parse_range(&rest[1..]).map(|(range, rest)| (Node::range(result, range), rest))
         }
         _ => Ok((result, rest)),
@@ -38,22 +38,24 @@ fn parse_quantifier(input: &str) -> Result<(Node, &str)> {
 }
 
 fn parse_range(input: &str) -> Result<(Range, &str)> {
-    take_number(input).and_then(|(lower, rest)| match (lower, rest.get(..1)) {
-        (Some(lower), Some(",")) => {
+    take_number(input).and_then(|(lower, rest)| match (lower, rest.chars().next()) {
+        (Some(lower), Some(',')) => {
             parse_range_upper(&rest[1..]).map(|(upper, rest)| (Range::new(lower, upper), rest))
         }
-        (Some(lower), Some("}")) => Ok((Range::new(lower, Some(lower)), &rest[1..])),
+        (Some(lower), Some('}')) => Ok((Range::new(lower, Some(lower)), &rest[1..])),
         _ => Err(ParsingError::InvalidRangeQuantifier),
     })
 }
 
 fn parse_range_upper(input: &str) -> Result<(Option<usize>, &str)> {
-    match input.get(..1) {
-        Some("}") => Ok((None, &input[1..])),
-        Some(_) => take_number(input).and_then(|(number, rest)| match (number, rest.get(..1)) {
-            (Some(number), Some("}")) => Ok((Some(number), &rest[1..])),
-            _ => Err(ParsingError::InvalidRangeQuantifier),
-        }),
+    match input.chars().next() {
+        Some('}') => Ok((None, &input[1..])),
+        Some(_) => {
+            take_number(input).and_then(|(number, rest)| match (number, rest.chars().next()) {
+                (Some(number), Some('}')) => Ok((Some(number), &rest[1..])),
+                _ => Err(ParsingError::InvalidRangeQuantifier),
+            })
+        }
         None => Err(ParsingError::InvalidRangeQuantifier),
     }
 }
@@ -66,7 +68,10 @@ fn parser_atom(input: &str) -> Result<(Node, &str)> {
             '\\' => parse_metachar(&input[1..]),
             '.' => Ok((Node::Wildcard, &input[1..])),
             ')' => Ok((Node::Empty, input)),
-            _ => Ok((Node::Character(c), &input[c.len_utf8()..])),
+            _ => {
+                let rest = &input[c.len_utf8()..];
+                Ok((Node::Character(c), rest))
+            }
         },
         None => Ok((Node::Empty, input)),
     }

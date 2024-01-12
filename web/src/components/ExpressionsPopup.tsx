@@ -1,11 +1,6 @@
 import { Dialog } from "@headlessui/react";
 import { useRef } from "react";
-
-const Snippet = ({ children }: { children: React.ReactNode }) => (
-  <span className="py-1 px-2 rounded-md text-sm text-slate-900 bg-cyan-100">
-    {children}
-  </span>
-);
+import Snippet from "./Snippet";
 
 const expressions = [
   { desc: "Basic regex", pat: ["foo", "(bar)", "foo|bar", "fo."] },
