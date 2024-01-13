@@ -4,13 +4,16 @@ import Navbar from "./components/Navbar";
 import ExpressionsPopup from "./components/ExpressionsPopup";
 import { RiQuestionFill } from "react-icons/ri";
 import { RegexMatch, RegexEngine, RegexCapture } from "regex-potata";
-import { dotFromRegex } from "./utils/viz";
+import { graphFromRegex } from "./utils/viz";
 import TestInput from "./components/TestInput";
 import Footer from "./components/Footer";
 import RegexInput from "./components/RegexInput";
 import ToolTip from "./components/ToolTip";
+import NfaVisualizer from "./components/NfaVisualizer";
+import Loader from "./components/Loader";
 
 const App = () => {
+  const [isLoading, setIsLoading] = useState(true);
   const [regexInput, setRegexInput] = useState("");
   const [testInput, setTestInput] = useState("");
   const [regexInstance, setRegexInstance] = useState<RegexEngine>();
@@ -26,6 +29,7 @@ const App = () => {
       const engine = new RegexEngine("");
       vizInstance.current = i;
       setRegexInstance(engine);
+      setTimeout(() => setIsLoading(false), 250);
     })();
   }, []);
 
@@ -39,7 +43,7 @@ const App = () => {
 
   useEffect(() => {
     if (regexInstance) {
-      const dot = dotFromRegex(regexInstance);
+      const dot = graphFromRegex(regexInstance);
       const elem = vizInstance.current?.renderSVGElement(dot);
 
       if (elem) {
@@ -54,6 +58,10 @@ const App = () => {
       setCaptures(regexInstance.captures(testInput));
     }
   }, [testInput, regexInstance]);
+
+  if (isLoading) {
+    return <Loader />;
+  }
 
   return (
     <div
@@ -91,18 +99,7 @@ const App = () => {
           </div>
           <div className="space-y-10">
             <div className="font-semibold">NFA Visualizer</div>
-            <div
-              className="pt-12 pb-8 w-full overflow-scroll
-              rounded-md border-[1px] border-slate-800"
-            >
-              {svg && (
-                <svg
-                  height={svg?.height.baseVal.value}
-                  width={svg?.width.baseVal.value}
-                  dangerouslySetInnerHTML={{ __html: svg.innerHTML }}
-                ></svg>
-              )}
-            </div>
+            <NfaVisualizer svg={svg} />
           </div>
         </div>
       </div>
@@ -111,6 +108,12 @@ const App = () => {
         open={isPopupOpen}
         onClose={() => setIsPopupOpen(false)}
       />
+
+      {/* Transition mask */}
+      <div
+        className="fixed w-screen h-screen z-50 opacity-0
+        animate-fade pointer-events-none bg-slate-900"
+      ></div>
     </div>
   );
 };

@@ -12,11 +12,21 @@ const matchDecoration = Decoration.mark({
   inclusiveEnd: false,
 });
 
-function getMatchHighlight(matches: RegexMatch[]) {
+const groupDecoration = Decoration.mark({
+  class: "underline underline-offset-8 decoration-2 decoration-cyan-300",
+  inclusiveStart: true,
+  inclusiveEnd: false,
+});
+
+function getMatchHighlight(matches: RegexMatch[], captures: RegexCapture[]) {
   const decorationBuilder = new RangeSetBuilder<Decoration>();
 
   for (const match of matches) {
     decorationBuilder.add(match.start, match.end, matchDecoration);
+  }
+
+  for (const capture of captures.slice(1)) {
+    decorationBuilder.add(capture.start, capture.end, groupDecoration);
   }
 
   const plugin = ViewPlugin.define(
@@ -42,7 +52,7 @@ function groupHoverTooltip(captures: RegexCapture[]) {
           create() {
             const dom = document.createElement("div");
             dom.innerHTML = `Group <span class="font-semibold">${capture.name()}</span>`;
-            dom.classList.add("px-4", "rounded-md", "!bg-slate-600");
+            dom.classList.add("py-2", "px-4", "rounded-md", "!bg-slate-600");
             return { dom };
           },
         };

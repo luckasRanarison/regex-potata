@@ -1,28 +1,53 @@
+import { Graph } from "@viz-js/viz";
 import { RegexEngine } from "regex-potata";
 
-function dotFromRegex(regex: RegexEngine) {
+function graphFromRegex(regex: RegexEngine) {
   const states = regex.nfaStates();
   const endState = states.length - 1;
-  const transitions = Array.from(states)
-    .flatMap((state) =>
-      regex
-        .nfaTransition(state)
-        ?.map((t) => `${state} -> ${t.end} [label="${t.toString()}"]\n`)
-    )
-    .join("\n");
-  const dot = `
-    digraph { 
-      bgcolor=none; 
-      graph [rankdir=LR]; 
-      node [shape=circle, color=white, penwidth=2, fontcolor=white, fontname="Arial"];
-      edge [color="#67e8f9", fontcolor=white, fontname="Arial"];
-      ${endState} [shape=doublecircle, color="#67e8f9"];
-      "" [shape=none]
-      "" -> 0
-      ${transitions}
-    }`;
 
-  return dot;
+  const config: Graph = {
+    graphAttributes: {
+      bgcolor: "none",
+      rankdir: "LR",
+    },
+    nodeAttributes: {
+      shape: "circle",
+      color: "white",
+      penwidth: 2,
+      fontcolor: "white",
+      fontname: "Arial",
+    },
+    edgeAttributes: {
+      color: "#67e8f9",
+      fontcolor: "white",
+      fontname: "Arial",
+    },
+    nodes: [
+      { name: "", attributes: { shape: "none" } },
+      {
+        name: endState.toString(),
+        attributes: { shape: "doublecircle", color: "#67e8f9" },
+      },
+    ],
+    edges: [{ tail: "", head: "0" }],
+    subgraphs: [],
+  };
+
+  for (const state of states) {
+    const transitions = regex.nfaTransition(state);
+
+    if (transitions) {
+      for (const transition of transitions) {
+        config.edges!.push({
+          tail: state.toString(),
+          head: transition.end.toString(),
+          attributes: { label: transition.toString() },
+        });
+      }
+    }
+  }
+
+  return config;
 }
 
-export { dotFromRegex };
+export { graphFromRegex };

@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 .cm-editor {
-  @apply border-[1px] border-slate-800 rounded-md p-3 !bg-transparent;
+  @apply h-52 border-[1px] border-slate-800 rounded-md p-3 !bg-transparent;
 }
 
 .cm-content {
-  @apply !font-sans !leading-6;
+  @apply !font-sans !leading-8;
 }
 
 .cm-focused {

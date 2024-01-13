@@ -16,7 +16,7 @@ const TestInput = ({ input, matches, captures, onInput }: InputProps) => {
 
   useEffect(() => {
     if (matches.length) {
-      setHighlightExtension(getMatchHighlight(matches));
+      setHighlightExtension(getMatchHighlight(matches, captures));
     } else {
       setHighlightExtension(undefined);
     }
@@ -33,12 +33,12 @@ const TestInput = ({ input, matches, captures, onInput }: InputProps) => {
   return (
     <ReactCodeMirror
       value={input}
-      height="200px"
-      className="leading-10"
       basicSetup={{
         lineNumbers: false,
         foldGutter: false,
         highlightActiveLine: false,
+        bracketMatching: false,
+        closeBrackets: false,
       }}
       extensions={[hoverExtension!, highlightExtension!].filter((v) => v)}
       onChange={(value) => onInput(value)}
