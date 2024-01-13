@@ -54,125 +54,125 @@ impl<'a> Regex {
     }
 
     pub fn captures(&self, input: &'a str) -> Option<Capture<'a>> {
-        let input_len = input.len();
-        let mut char_count = 0;
-        let mut captures = HashMap::new();
-        let mut named_captures = HashMap::new();
-        let mut states = HashSet::new();
-        let mut end = None;
-        let mut char_index_map = HashMap::new();
+        self.matches(input, false).into_iter().next()
+    }
 
-        states.insert(INITAL_STATE);
-
-        for (idx, ch) in input.char_indices() {
-            char_index_map.insert(idx, char_count);
-            char_count += 1;
-
-            states = states
-                .iter()
-                .flat_map(|&s| self.nfa.epsilon_closure(s))
-                .collect();
-
-            self.update_captures(&mut captures, &mut named_captures, &states, idx);
-
-            if self.has_accepting_state(&states) {
-                end = Some(idx)
-            }
-
-            states = states
-                .iter()
-                .flat_map(|state| self.nfa.next(*state, ch))
-                .collect();
-
-            if states.is_empty() {
-                break;
-            }
-        }
-
-        char_index_map.insert(input_len, char_count);
-        states = states
-            .iter()
-            .flat_map(|&s| self.nfa.epsilon_closure(s))
-            .collect();
-
-        self.update_captures(&mut captures, &mut named_captures, &states, input_len);
-
-        if self.has_accepting_state(&states) {
-            end = Some(input_len);
-        }
-
-        if end.is_none() {
-            return None;
-        }
-
-        captures.insert(0, (Some(0), end)); // full match
-
-        let captures = captures
-            .into_iter()
-            .flat_map(|(index, (start, end))| {
-                start
-                    .zip(end)
-                    .map(|(start, end)| (index, Match::new(start, end, &input[start..end])))
-            })
-            .collect();
-        let named_captures = named_captures
-            .into_iter()
-            .flat_map(|(name, (start, end))| {
-                start
-                    .zip(end)
-                    .map(|(start, end)| (name, Match::new(start, end, &input[start..end])))
-            })
-            .collect();
-
-        Some(Capture {
-            captures,
-            named_captures,
-        })
+    pub fn captures_all(&self, input: &'a str) -> Vec<Capture<'a>> {
+        self.matches(input, true)
     }
 
     pub fn find(&self, input: &'a str) -> Option<Match<'a>> {
-        self.matches(input, false).into_iter().next()
+        self.matches(input, false)
+            .into_iter()
+            .next()
+            .and_then(|mut c| c.captures.remove(&0))
     }
 
     pub fn find_all(&self, input: &'a str) -> Vec<Match<'a>> {
         self.matches(input, true)
+            .into_iter()
+            .flat_map(|mut captures| captures.captures.remove(&0))
+            .collect()
     }
 
-    fn matches(&self, input: &'a str, all: bool) -> Vec<Match<'a>> {
-        let mut result = Vec::new();
+    fn matches(&self, input: &'a str, all: bool) -> Vec<Capture<'a>> {
+        let mut result: Vec<Capture<'_>> = Vec::new();
 
         for (i, _) in input.char_indices() {
-            let mut end = None;
+            let start = match result.last() {
+                Some(capt) => capt.get(0).map_or(i, |m| if i > m.end { i } else { m.end }),
+                None => i,
+            };
+
+            if i < start {
+                continue;
+            }
+
+            let input_len = input[start..].len();
+            let mut char_count = 0;
+            let mut captures = HashMap::new();
+            let mut named_captures = HashMap::new();
             let mut states = HashSet::new();
+            let mut end = None;
+            let mut char_index_map = HashMap::new();
 
             states.insert(INITAL_STATE);
 
-            for (j, ch) in input[i..].char_indices() {
+            for (j, ch) in input[start..].char_indices() {
+                char_index_map.insert(j + start, char_count);
+                char_count += 1;
+
                 states = states
                     .iter()
                     .flat_map(|&s| self.nfa.epsilon_closure(s))
-                    .flat_map(|state| self.nfa.next(state, ch))
-                    .flat_map(|s| self.nfa.epsilon_closure(s))
                     .collect();
 
+                self.update_captures(&mut captures, &mut named_captures, &states, j + start);
+
                 if self.has_accepting_state(&states) {
-                    end = Some(i + j + ch.len_utf8());
+                    end = Some(j + start)
                 }
+
+                states = states
+                    .iter()
+                    .flat_map(|state| self.nfa.next(*state, ch))
+                    .collect();
 
                 if states.is_empty() {
                     break;
                 }
             }
 
-            if let Some(end) = end {
-                let m = Match::new(i, end, &input[i..end]);
+            char_index_map.insert(input_len, char_count);
+            states = states
+                .iter()
+                .flat_map(|&s| self.nfa.epsilon_closure(s))
+                .collect();
 
-                if !all {
-                    return vec![m];
-                }
+            self.update_captures(
+                &mut captures,
+                &mut named_captures,
+                &states,
+                input_len + start,
+            );
 
-                result.push(m);
+            if self.has_accepting_state(&states) {
+                end = Some(input_len + start);
             }
+
+            if end.is_none() {
+                continue;
+            }
+
+            captures.insert(0, (Some(start), end)); // full match
+
+            let captures = captures
+                .into_iter()
+                .flat_map(|(index, (start, end))| {
+                    start
+                        .zip(end)
+                        .map(|(start, end)| (index, Match::new(start, end, &input[start..end])))
+                })
+                .collect();
+            let named_captures = named_captures
+                .into_iter()
+                .flat_map(|(name, (start, end))| {
+                    start
+                        .zip(end)
+                        .map(|(start, end)| (name, Match::new(start, end, &input[start..end])))
+                })
+                .collect();
+
+            let capture = Capture {
+                captures,
+                named_captures,
+            };
+
+            if !all {
+                return vec![capture];
+            }
+
+            result.push(capture)
         }
 
         result

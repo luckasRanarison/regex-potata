@@ -3,7 +3,7 @@ import { Viz, instance } from "@viz-js/viz";
 import Navbar from "./components/Navbar";
 import ExpressionsPopup from "./components/ExpressionsPopup";
 import { RiQuestionFill } from "react-icons/ri";
-import { RegexMatch, RegexEngine, RegexCapture } from "regex-potata";
+import { RegexEngine, RegexCapture } from "regex-potata";
 import { graphFromRegex } from "./utils/viz";
 import TestInput from "./components/TestInput";
 import Footer from "./components/Footer";
@@ -19,7 +19,6 @@ const App = () => {
   const [regexInstance, setRegexInstance] = useState<RegexEngine>();
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [svg, setSvg] = useState<SVGSVGElement>();
-  const [matches, setMatches] = useState<RegexMatch[]>([]);
   const [captures, setCaptures] = useState<RegexCapture[]>([]);
   const vizInstance = useRef<Viz>();
 
@@ -36,7 +35,7 @@ const App = () => {
   useEffect(() => {
     try {
       setRegexInstance(new RegexEngine(regexInput));
-    } catch (_) {
+    } catch (error) {
       setRegexInstance(undefined);
     }
   }, [regexInput]);
@@ -54,8 +53,7 @@ const App = () => {
 
   useEffect(() => {
     if (regexInstance) {
-      setMatches(regexInstance.findAll(testInput));
-      setCaptures(regexInstance.captures(testInput));
+      setCaptures(regexInstance.capturesAll(testInput));
     }
   }, [testInput, regexInstance]);
 
@@ -65,7 +63,7 @@ const App = () => {
 
   return (
     <div
-      className="min-h-screen min-w-screen 
+      className="min-h-screen min-w-screen
       flex flex-col items-center
       text-white bg-slate-900"
     >
@@ -92,7 +90,6 @@ const App = () => {
             <div className="font-semibold">Test input</div>
             <TestInput
               input={testInput}
-              matches={matches}
               captures={captures}
               onInput={(v) => setTestInput(v)}
             />
