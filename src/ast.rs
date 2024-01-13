@@ -90,7 +90,7 @@ pub enum ClassMember {
 impl fmt::Display for ClassMember {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ClassMember::Atom(ch) => write!(f, "{ch}"),
+            ClassMember::Atom(ch) => write!(f, "{}", format_char(ch)),
             ClassMember::Range(lower, upper) => write!(f, "{lower}-{upper}"),
         }
     }
@@ -113,5 +113,17 @@ impl fmt::Display for CharacterClass {
                 .map(ClassMember::to_string)
                 .collect::<String>()
         )
+    }
+}
+
+fn format_char(ch: &char) -> String {
+    match ch {
+        ' ' => r"\\s".to_owned(),
+        '\t' => r"\\t".to_owned(),
+        '\n' => r"\\n".to_owned(),
+        '\r' => r"\\r".to_owned(),
+        '\x0C' => r"\\x0C".to_owned(),
+        '\x0B' => r"\\x0B".to_owned(),
+        _ => ch.to_string(),
     }
 }

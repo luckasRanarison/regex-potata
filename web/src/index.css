@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.cm-editor {
+  @apply h-52 border-[1px] border-slate-800 rounded-md p-3 !bg-transparent;
+}
+
+.cm-content {
+  @apply !font-sans !leading-8;
+}
+
+.cm-focused {
+  @apply !outline !outline-cyan-300;
+}
+
+.cm-cursor {
+  @apply !border-white;
+}
+
+.cm-selectionBackground {
+  @apply !bg-[#00000060];
+}
+
+.cm-tooltip {
+  @apply !bg-transparent !border-none;
+}

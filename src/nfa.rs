@@ -7,10 +7,10 @@ use std::{
 pub const START: usize = 0;
 
 pub type StateId = usize;
-type TransitionMap = BTreeMap<usize, Vec<Transition>>;
+pub type TransitionMap = BTreeMap<usize, Vec<Transition>>;
 
 #[derive(Clone, PartialEq)]
-enum TransitionKind {
+pub enum TransitionKind {
     Character(char),
     Epsilon,
     Wildcard,
@@ -20,18 +20,21 @@ enum TransitionKind {
 impl fmt::Display for TransitionKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TransitionKind::Character(ch) => write!(f, "{ch}"),
             TransitionKind::Epsilon => write!(f, "ε"),
-            TransitionKind::Wildcard => write!(f, "."),
+            TransitionKind::Wildcard => write!(f, "wildcard"),
+            TransitionKind::Character(ch) => match ch.is_whitespace() {
+                true => write!(f, "whitespace"),
+                false => write!(f, "{ch}"),
+            },
             TransitionKind::CharacterClass(class) => write!(f, "{class}"),
         }
     }
 }
 
 #[derive(Clone, PartialEq)]
-struct Transition {
-    kind: TransitionKind,
-    end: StateId,
+pub struct Transition {
+    pub(crate) kind: TransitionKind,
+    pub(crate) end: StateId,
 }
 
 impl Transition {
@@ -68,10 +71,10 @@ pub struct CaptureGroup {
 
 #[derive(Clone, PartialEq)]
 pub struct Nfa {
-    state_count: usize,
-    transitions: TransitionMap,
-    capture_groups: Vec<CaptureGroup>,
-    named_capture_groups: HashMap<String, CaptureGroup>,
+    pub(crate) state_count: usize,
+    pub(crate) transitions: TransitionMap,
+    pub(crate) capture_groups: Vec<CaptureGroup>,
+    pub(crate) named_capture_groups: HashMap<String, CaptureGroup>,
 }
 
 impl Nfa {
@@ -219,14 +222,6 @@ impl Nfa {
 
     pub fn is_accepting(&self, state: StateId) -> bool {
         self.end() == state
-    }
-
-    pub fn capture_groups(&self) -> &Vec<CaptureGroup> {
-        &self.capture_groups
-    }
-
-    pub fn named_capture_groups(&self) -> &HashMap<String, CaptureGroup> {
-        &self.named_capture_groups
     }
 }
 
