@@ -74,7 +74,7 @@ impl RegexGroup {
 }
 
 #[wasm_bindgen]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RegexCapture {
     groups: Vec<RegexGroup>,
 }
@@ -125,32 +125,31 @@ fn get_char_index(input: &str) -> HashMap<usize, usize> {
         .collect()
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::{RegexEngine, RegexGroup};
-//
-//     #[test]
-//     fn test_unicode_range() {
-//         let regex = RegexEngine::new(r#"ここ"#);
-//         let matches = regex.find_all("ここでここで");
-//
-//         assert_eq!(
-//             matches,
-//             vec![
-//                 RegexGroup { start: 0, end: 2 },
-//                 RegexGroup { start: 3, end: 5 },
-//             ]
-//         );
-//
-//         let regex = RegexEngine::new(r#"日本語"#);
-//         let matches = regex.find_all("これは日本語のテストです。日本語");
-//
-//         assert_eq!(
-//             matches,
-//             vec![
-//                 RegexGroup { start: 3, end: 6 },
-//                 RegexGroup { start: 13, end: 16 },
-//             ]
-//         );
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use super::{RegexCapture, RegexEngine, RegexGroup};
+
+    #[test]
+    fn test_unicode_range() {
+        let regex = RegexEngine::new(r#"ここ"#);
+        let matches = regex.captures_all("ここでここで");
+        let expected = vec![
+            RegexCapture {
+                groups: vec![RegexGroup {
+                    name: "0".to_string(),
+                    start: 0,
+                    end: 2,
+                }],
+            },
+            RegexCapture {
+                groups: vec![RegexGroup {
+                    name: "0".to_string(),
+                    start: 3,
+                    end: 5,
+                }],
+            },
+        ];
+
+        assert_eq!(matches, expected);
+    }
+}

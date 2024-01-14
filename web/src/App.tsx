@@ -4,7 +4,7 @@ import Navbar from "./components/Navbar";
 import ExpressionsPopup from "./components/ExpressionsPopup";
 import { RiQuestionFill } from "react-icons/ri";
 import { RegexEngine, RegexCapture } from "regex-potata";
-import { graphFromRegex } from "./utils/viz";
+import { graphFromRegex } from "./utils/graphiz";
 import TestInput from "./components/TestInput";
 import Footer from "./components/Footer";
 import RegexInput from "./components/RegexInput";

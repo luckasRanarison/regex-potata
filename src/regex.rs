@@ -144,23 +144,14 @@ impl<'a> Regex {
                 continue;
             }
 
-            captures.insert(0, (Some(start), end)); // full match
-
             let captures = captures
                 .into_iter()
-                .flat_map(|(index, (start, end))| {
-                    start
-                        .zip(end)
-                        .map(|(start, end)| (index, Match::new(start, end, &input[start..end])))
-                })
+                .chain([(0, (Some(start), end))])
+                .flat_map(|(index, (start, end))| Some(index).zip(self.new_mach(input, start, end)))
                 .collect();
             let named_captures = named_captures
                 .into_iter()
-                .flat_map(|(name, (start, end))| {
-                    start
-                        .zip(end)
-                        .map(|(start, end)| (name, Match::new(start, end, &input[start..end])))
-                })
+                .flat_map(|(name, (start, end))| Some(name).zip(self.new_mach(input, start, end)))
                 .collect();
 
             let capture = Capture {
@@ -186,6 +177,17 @@ impl<'a> Regex {
         states.iter().any(|s| self.nfa.is_accepting(*s))
     }
 
+    fn new_mach(
+        &self,
+        input: &'a str,
+        start: Option<usize>,
+        end: Option<usize>,
+    ) -> Option<Match<'a>> {
+        start
+            .zip(end)
+            .map(|(start, end)| Match::new(start, end, &input[start..end]))
+    }
+
     fn update_captures(
         &self,
         captures: &mut HashMap<usize, (Option<usize>, Option<usize>)>,
@@ -195,48 +197,66 @@ impl<'a> Regex {
     ) {
         for state in states {
             if let Some(groups) = self.start_capture.get(state) {
-                self.update_capture_starts(captures, named_captures, groups, position);
+                for group in groups {
+                    self.update_capture_start(captures, named_captures, group, position);
+                }
             }
             if let Some(groups) = self.end_capture.get(state) {
-                self.update_capture_ends(captures, named_captures, groups, position);
-            }
-        }
-    }
-
-    fn update_capture_starts(
-        &self,
-        captures: &mut HashMap<usize, (Option<usize>, Option<usize>)>,
-        named_captures: &mut HashMap<String, (Option<usize>, Option<usize>)>,
-        groups: &[CaptureKind],
-        position: usize,
-    ) {
-        for group in groups {
-            match group {
-                CaptureKind::Indexed(index) => {
-                    captures.entry(*index + 1).or_default().0 = Some(position)
-                }
-                CaptureKind::Named(name) => {
-                    named_captures.entry(name.to_owned()).or_default().0 = Some(position)
+                for group in groups {
+                    self.update_capture_end(captures, named_captures, group, position);
                 }
             }
         }
     }
 
-    fn update_capture_ends(
+    fn update_capture_start(
         &self,
         captures: &mut HashMap<usize, (Option<usize>, Option<usize>)>,
         named_captures: &mut HashMap<String, (Option<usize>, Option<usize>)>,
-        groups: &[CaptureKind],
+        group: &CaptureKind,
         position: usize,
     ) {
-        for group in groups {
-            match group {
-                CaptureKind::Indexed(index) => {
-                    captures.entry(*index + 1).or_default().1 = Some(position)
-                }
-                CaptureKind::Named(name) => {
-                    named_captures.entry(name.to_owned()).or_default().1 = Some(position)
-                }
+        match group {
+            CaptureKind::Indexed(index) => {
+                captures
+                    .entry(*index + 1)
+                    .and_modify(|(start, end)| {
+                        if end.is_none() {
+                            *start = Some(position)
+                        }
+                    })
+                    .or_insert((Some(position), None));
+            }
+            CaptureKind::Named(name) => {
+                named_captures
+                    .entry(name.to_owned())
+                    .and_modify(|(start, end)| {
+                        if end.is_none() {
+                            *start = Some(position)
+                        }
+                    })
+                    .or_insert((Some(position), None));
+            }
+        }
+    }
+
+    fn update_capture_end(
+        &self,
+        captures: &mut HashMap<usize, (Option<usize>, Option<usize>)>,
+        named_captures: &mut HashMap<String, (Option<usize>, Option<usize>)>,
+        group: &CaptureKind,
+        position: usize,
+    ) {
+        match group {
+            CaptureKind::Indexed(index) => {
+                captures
+                    .entry(*index + 1)
+                    .and_modify(|(_, end)| *end = Some(position));
+            }
+            CaptureKind::Named(name) => {
+                named_captures
+                    .entry(name.to_owned())
+                    .and_modify(|(_, end)| *end = Some(position));
             }
         }
     }
@@ -334,7 +354,12 @@ impl<'a> Match<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::regex::{Match, Regex};
+    use std::collections::HashMap;
+
+    use crate::{
+        regex::{Match, Regex},
+        Capture,
+    };
 
     #[test]
     fn test_simple_match() {
@@ -431,6 +456,24 @@ mod test {
         assert_eq!(matches.get_name("hour"), Some(&Match::new(0, 2, "19")));
         assert_eq!(matches.get_name("minute"), Some(&Match::new(3, 5, "30")));
     }
+
+    // #[test]
+    // fn test_repeated_group() {
+    //     let regex = Regex::new(r#"(hi)+(ah)+"#).unwrap();
+    //     let matches = regex.captures("hihiah").unwrap();
+    //     let expected = Capture {
+    //         captures: vec![
+    //             (0, Match::new(0, 6, "hihiah")),
+    //             (1, Match::new(2, 4, "hi")),
+    //             (2, Match::new(4, 6, "ah")),
+    //         ]
+    //         .into_iter()
+    //         .collect(),
+    //         named_captures: HashMap::new(),
+    //     };
+    //
+    //     assert_eq!(matches, expected);
+    // }
 
     #[test]
     fn test_find() {

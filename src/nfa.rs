@@ -315,7 +315,7 @@ impl NfaBuilder {
     }
 
     fn group(mut self, start: StateId, end: StateId) -> Self {
-        self.capture_groups.push(CaptureGroup { start, end });
+        self.capture_groups.insert(0, CaptureGroup { start, end });
         self
     }
 
@@ -358,19 +358,19 @@ mod tests {
 
     #[test]
     fn test_concatenation() {
-        let nfa = NfaBuilder::default()
+        let expected = NfaBuilder::default()
             .transition(0, TransitionKind::Character('h'), 1)
             .transition(1, TransitionKind::Epsilon, 2)
             .transition(2, TransitionKind::Character('i'), 3)
             .build();
-        let expected = to_nfa("hi");
+        let nfa = to_nfa("hi");
 
-        assert_eq!(nfa, expected);
+        assert_eq!(expected, nfa);
     }
 
     #[test]
     fn test_alternation() {
-        let nfa = NfaBuilder::default()
+        let expected = NfaBuilder::default()
             .transition(0, TransitionKind::Epsilon, 1)
             .transition(0, TransitionKind::Epsilon, 3)
             .transition(1, TransitionKind::Character('a'), 2)
@@ -378,50 +378,50 @@ mod tests {
             .transition(3, TransitionKind::Character('b'), 4)
             .transition(4, TransitionKind::Epsilon, 5)
             .build();
-        let expected = to_nfa("a|b");
+        let nfa = to_nfa("a|b");
 
-        assert_eq!(nfa, expected);
+        assert_eq!(expected, nfa);
     }
 
     #[test]
     fn test_range_excat() {
-        let nfa = NfaBuilder::default()
+        let expected = NfaBuilder::default()
             .transition(0, TransitionKind::Character('e'), 1)
             .transition(1, TransitionKind::Epsilon, 2)
             .transition(2, TransitionKind::Character('e'), 3)
             .transition(3, TransitionKind::Epsilon, 4)
             .transition(4, TransitionKind::Character('e'), 5)
             .build();
-        let expected = to_nfa("e{3}");
+        let nfa = to_nfa("e{3}");
 
-        assert_eq!(nfa, expected);
+        assert_eq!(expected, nfa);
     }
 
     #[test]
     fn test_range_between() {
-        let nfa = NfaBuilder::default()
+        let expected = NfaBuilder::default()
             .transition(0, TransitionKind::Character('e'), 1)
             .transition(1, TransitionKind::Epsilon, 2)
             .transition(2, TransitionKind::Character('e'), 3)
             .transition(2, TransitionKind::Epsilon, 3)
             .build();
-        let expected = to_nfa("e{1,2}");
+        let nfa = to_nfa("e{1,2}");
 
-        assert_eq!(nfa, expected);
+        assert_eq!(expected, nfa);
     }
 
     #[test]
     fn test_range_minimum() {
-        let nfa = NfaBuilder::default()
+        let expected = NfaBuilder::default()
             .transition(0, TransitionKind::Character('e'), 1)
             .transition(1, TransitionKind::Epsilon, 2)
             .transition(2, TransitionKind::Character('e'), 3)
             .transition(3, TransitionKind::Epsilon, 1)
             .transition(3, TransitionKind::Epsilon, 4)
             .build();
-        let expected = to_nfa("e{2,}");
+        let nfa = to_nfa("e{2,}");
 
-        assert_eq!(nfa, expected);
+        assert_eq!(expected, nfa);
     }
 
     #[test]
@@ -453,5 +453,18 @@ mod tests {
         let eclosure = nfa.epsilon_closure(0);
 
         assert_eq!(eclosure, expected);
+    }
+
+    #[test]
+    fn test_capture_group_order() {
+        let nfa = to_nfa("a(b(c)(d))(e)");
+        let expected = vec![
+            CaptureGroup { start: 2, end: 7 },
+            CaptureGroup { start: 4, end: 5 },
+            CaptureGroup { start: 6, end: 7 },
+            CaptureGroup { start: 8, end: 9 },
+        ];
+
+        assert_eq!(nfa.capture_groups, expected);
     }
 }

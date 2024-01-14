@@ -20,7 +20,7 @@ function getMatchHighlight(captures: RegexCapture[]) {
   const decorationBuilder = new RangeSetBuilder<Decoration>();
 
   for (let i = 0; i < captures.length; i++) {
-    const groups = captures[i].groups();
+    const groups = captures[i].groups().sort((a, b) => a.start - b.start);
 
     decorationBuilder.add(
       groups[0].start,
@@ -37,7 +37,7 @@ function getMatchHighlight(captures: RegexCapture[]) {
         groups[j].end,
         decoration(
           `color: #0f172a; background-color: ${
-            palette[i + (j % palette.length)]
+            palette[(i + j) % palette.length]
           }`
         )
       );

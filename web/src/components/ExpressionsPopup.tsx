@@ -3,11 +3,11 @@ import { useRef } from "react";
 import Snippet from "./Snippet";
 
 const expressions = [
-  { desc: "Basic regex", pat: ["foo", "(bar)", "foo|bar", "fo."] },
+  { desc: "Basic regex", pat: ["foo", "(bar)", "foo|bar"] },
   { desc: "Quantifiers", pat: ["+", "*", "?", "{x}", "{x,y}", "{x,}"] },
   {
     desc: "Character class",
-    pat: ["a-z]", "[^x]", "\\d", "\\D", "\\w", "\\W", "\\s", "\\S"],
+    pat: [".", "[a-z]", "[^x]", "\\d", "\\D", "\\w", "\\W", "\\s", "\\S"],
   },
   { desc: "Capture groups", pat: ["(foo)", "(:?bar)", "(?<name>foo)"] },
 ];
