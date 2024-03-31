@@ -10,23 +10,26 @@ pub fn parse_regex(input: &str) -> Result<Node> {
 }
 
 fn parse_alternation(input: &str) -> Result<(Node, &str)> {
-    parse_concat(input).and_then(|(lhs, rest)| match rest.chars().next() {
+    let (lhs, rest) = parse_concat(input)?;
+    match rest.chars().next() {
         Some('|') => {
             parse_alternation(&rest[1..]).map(|(rhs, rest)| (Node::alternation(lhs, rhs), rest))
         }
         _ => Ok((lhs, rest)),
-    })
+    }
 }
 
 fn parse_concat(input: &str) -> Result<(Node, &str)> {
-    parse_quantifier(input).and_then(|(lhs, rest)| match rest.chars().next() {
+    let (lhs, rest) = parse_quantifier(input)?;
+    match rest.chars().next() {
         Some('|') | Some(')') | None => Ok((lhs, rest)),
         Some(_) => parse_concat(rest).map(|(rhs, rest)| (Node::concatenation(lhs, rhs), rest)),
-    })
+    }
 }
 
 fn parse_quantifier(input: &str) -> Result<(Node, &str)> {
-    parser_atom(input).and_then(|(result, rest)| match rest.chars().next() {
+    let (result, rest) = parser_atom(input)?;
+    match rest.chars().next() {
         Some('+') => Ok((Node::plus(result), &rest[1..])),
         Some('*') => Ok((Node::star(result), &rest[1..])),
         Some('?') => Ok((Node::optional(result), &rest[1..])),
@@ -34,27 +37,29 @@ fn parse_quantifier(input: &str) -> Result<(Node, &str)> {
             parse_range(&rest[1..]).map(|(range, rest)| (Node::range(result, range), rest))
         }
         _ => Ok((result, rest)),
-    })
+    }
 }
 
 fn parse_range(input: &str) -> Result<(Range, &str)> {
-    take_number(input).and_then(|(lower, rest)| match (lower, rest.chars().next()) {
+    let (lower, rest) = take_number(input)?;
+    match (lower, rest.chars().next()) {
         (Some(lower), Some(',')) => {
             parse_range_upper(&rest[1..]).map(|(upper, rest)| (Range::new(lower, upper), rest))
         }
         (Some(lower), Some('}')) => Ok((Range::new(lower, Some(lower)), &rest[1..])),
         _ => Err(ParsingError::InvalidRangeQuantifier),
-    })
+    }
 }
 
 fn parse_range_upper(input: &str) -> Result<(Option<usize>, &str)> {
     match input.chars().next() {
         Some('}') => Ok((None, &input[1..])),
         Some(_) => {
-            take_number(input).and_then(|(number, rest)| match (number, rest.chars().next()) {
+            let (number, rest) = take_number(input)?;
+            match (number, rest.chars().next()) {
                 (Some(number), Some('}')) => Ok((Some(number), &rest[1..])),
                 _ => Err(ParsingError::InvalidRangeQuantifier),
-            })
+            }
         }
         None => Err(ParsingError::InvalidRangeQuantifier),
     }
@@ -148,10 +153,11 @@ fn parse_group(input: &str) -> Result<(Node, &str)> {
         _ => (true, None, input),
     };
 
-    parse_alternation(rest).and_then(|(result, rest)| match rest.get(..1) {
+    let (result, rest) = parse_alternation(rest)?;
+    match rest.get(..1) {
         Some(")") => Ok((Node::group(result, is_capturing, name), &rest[1..])),
         _ => Err(ParsingError::MissingCharacter(')')),
-    })
+    }
 }
 
 fn take_while<'a, P>(predicate: P) -> impl Fn(&'a str) -> (&'a str, &'a str) + 'a
