@@ -354,11 +354,11 @@ impl<'a> Match<'a> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
+    // use std::collections::HashMap;
 
     use crate::{
         regex::{Match, Regex},
-        Capture,
+        // Capture,
     };
 
     #[test]

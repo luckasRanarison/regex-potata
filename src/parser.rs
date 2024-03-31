@@ -117,10 +117,10 @@ fn parse_class_members_inner(
 
     if let Some(rest) = rest.strip_prefix('-') {
         let (upper, _, rest) = parse_char(rest)?;
-        let acc = vec![acc, vec![ClassMember::Range(ch, upper)]].concat();
+        let acc = [acc, vec![ClassMember::Range(ch, upper)]].concat();
         parse_class_members_inner(rest, acc)
     } else {
-        let acc = vec![acc, vec![ClassMember::Atom(ch)]].concat();
+        let acc = [acc, vec![ClassMember::Atom(ch)]].concat();
         parse_class_members_inner(rest, acc)
     }
 }
